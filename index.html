@@ -14,12 +14,24 @@
             <button class="menu-toggle" id="menuToggle" aria-label="Меню">
                 <span class="hamburger"></span>
             </button>
-            <h1 class="header-title">Интерактивная карта школы 1430</h1>
+            <div class="header-logo">
+                <span class="school-logo">🏫</span>
+                <h1 class="header-title">Школа № 1430 - Интерактивная карта</h1>
+            </div>
             <div class="floor-controls">
                 <div class="floor-selector">
-                    <button class="floor-btn active" data-floor="1">Этаж 1</button>
-                    <button class="floor-btn" data-floor="2">Этаж 2</button>
-                    <button class="floor-btn" data-floor="3">Этаж 3</button>
+                    <div class="floor-with-delete">
+                        <button class="floor-btn active" data-floor="1">Этаж 1</button>
+                        <button class="floor-delete-btn" data-floor="1" title="Удалить этаж" style="display: none;">×</button>
+                    </div>
+                    <div class="floor-with-delete">
+                        <button class="floor-btn" data-floor="2">Этаж 2</button>
+                        <button class="floor-delete-btn" data-floor="2" title="Удалить этаж">×</button>
+                    </div>
+                    <div class="floor-with-delete">
+                        <button class="floor-btn" data-floor="3">Этаж 3</button>
+                        <button class="floor-delete-btn" data-floor="3" title="Удалить этаж">×</button>
+                    </div>
                     <button class="floor-btn add-floor" id="addFloor">+</button>
                 </div>
                 <div class="current-floor-indicator">
@@ -60,7 +72,14 @@
                             <span class="node-preview stair"></span>
                             Лестница
                         </button>
-
+                        <button class="btn btn--sm node-type-btn" data-type="corridor">
+                            <span class="node-preview corridor"></span>
+                            Коридор
+                        </button>
+                        <button class="btn btn--sm node-type-btn" data-type="exit">
+                            <span class="node-preview exit"></span>
+                            Выход
+                        </button>
                     </div>
                 </div>
 
@@ -187,6 +206,23 @@
                         <button type="button" class="btn btn--outline" id="cancelNodeEdit">❌ Отмена</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floor Delete Confirmation Modal -->
+    <div class="modal" id="deleteFloorModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Удаление этажа</h2>
+                <button class="modal-close" id="closeDeleteFloorModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteFloorText">Вы уверены, что хотите удалить Этаж X? Все узлы и связи на этом этаже будут удалены.</p>
+                <div class="modal-actions">
+                    <button class="btn btn--primary btn-delete" id="confirmDeleteFloor">Да, удалить</button>
+                    <button class="btn btn--outline" id="cancelDeleteFloor">Отмена</button>
+                </div>
             </div>
         </div>
     </div>

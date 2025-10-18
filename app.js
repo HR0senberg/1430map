@@ -3,6 +3,7 @@ class SchoolMapApp {
         this.canvas = document.getElementById('mapCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.isDarkTheme = false;
+        this.floorToDelete = null;
         
         // Map data
         this.nodes = new Map();
@@ -33,8 +34,10 @@ class SchoolMapApp {
         this.qrScanner = null;
         
         this.nodeTypes = {
-            room: { color: '#3498db', size: 60, shape: 'rectangle', name: 'Комната' },
-            stair: { color: '#2ecc71', size: 50, shape: 'triangle', name: 'Лестница' }
+            room: { color: '#0066B3', size: 60, shape: 'rectangle', name: 'Комната' },
+            stair: { color: '#2ecc71', size: 50, shape: 'triangle', name: 'Лестница' },
+            corridor: { color: '#9b59b6', width: 80, height: 40, shape: 'rectangle_long', name: 'Коридор' },
+            exit: { color: '#e74c3c', size: 50, shape: 'pentagon', name: 'Выход' }
         };
         
         // Floor management
@@ -43,6 +46,8 @@ class SchoolMapApp {
         this.maxFloors = 3;
         
         this.init();
+        // Update delete buttons visibility on initialization
+        setTimeout(() => this.updateFloorDeleteButtons(), 100);
     }
 
     init() {
@@ -133,6 +138,20 @@ class SchoolMapApp {
         });
         
         document.getElementById('addFloor').addEventListener('click', () => this.addFloor());
+        
+        // Floor delete buttons
+        document.querySelectorAll('.floor-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const floor = parseInt(e.target.dataset.floor);
+                this.showDeleteFloorConfirmation(floor);
+            });
+        });
+        
+        // Delete floor modal
+        document.getElementById('closeDeleteFloorModal').addEventListener('click', () => this.closeDeleteFloorModal());
+        document.getElementById('cancelDeleteFloor').addEventListener('click', () => this.closeDeleteFloorModal());
+        document.getElementById('confirmDeleteFloor').addEventListener('click', () => this.confirmDeleteFloor());
 
         // Node editor modal
         document.getElementById('closeNodeModal').addEventListener('click', () => this.closeNodeEditor());
@@ -155,28 +174,30 @@ class SchoolMapApp {
     }
 
     initializeExampleNodes() {
-        // Floor 1 nodes
+        // Floor 1 nodes with corridors and exit
         const floor1Nodes = [
-            { id: 'room101', type: 'room', name: 'Кабинет 101', info: 'Математика', floor: 1, x: 150, y: 150, qrCode: 'room101' },
-            { id: 'room102', type: 'room', name: 'Кабинет 102', info: 'Физика', floor: 1, x: 300, y: 150, qrCode: 'room102' },
-            { id: 'room103', type: 'room', name: 'Кабинет 103', info: 'Химия', floor: 1, x: 150, y: 300, qrCode: 'room103' },
-            { id: 'stairs1_f1', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', floor: 1, connectsToFloor: 2, x: 450, y: 220, qrCode: 'stairs1_f1' }
+            { id: 'exit1', type: 'exit', name: 'Главный выход', info: 'Выход на ул. Угличская', floor: 1, x: 100, y: 200, qrCode: 'exit1' },
+            { id: 'corridor1_1', type: 'corridor', name: 'Коридор главный', info: '1 этаж', floor: 1, x: 250, y: 200, qrCode: 'corridor1_1' },
+            { id: 'room101', type: 'room', name: 'Кабинет 101', info: 'Математика', floor: 1, x: 400, y: 150, qrCode: 'room101' },
+            { id: 'room102', type: 'room', name: 'Кабинет 102', info: 'Физика', floor: 1, x: 400, y: 250, qrCode: 'room102' },
+            { id: 'stairs1_f1', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', floor: 1, connectsToFloor: 2, x: 550, y: 200, qrCode: 'stairs1_f1' }
         ];
         
-        // Floor 2 nodes
+        // Floor 2 nodes with corridors
         const floor2Nodes = [
-            { id: 'room201', type: 'room', name: 'Кабинет 201', info: 'Русский язык', floor: 2, x: 150, y: 150, qrCode: 'room201' },
-            { id: 'room202', type: 'room', name: 'Кабинет 202', info: 'Литература', floor: 2, x: 300, y: 150, qrCode: 'room202' },
-            { id: 'room203', type: 'room', name: 'Кабинет 203', info: 'История', floor: 2, x: 150, y: 300, qrCode: 'room203' },
-            { id: 'stairs1_f2', type: 'stair', name: 'Лестница 1', info: 'На 1 и 3 этаж', floor: 2, connectsToFloors: [1, 3], x: 450, y: 220, qrCode: 'stairs1_f2' }
+            { id: 'corridor2_1', type: 'corridor', name: 'Коридор центральный', info: '2 этаж', floor: 2, x: 250, y: 200, qrCode: 'corridor2_1' },
+            { id: 'room201', type: 'room', name: 'Кабинет 201', info: 'Русский язык', floor: 2, x: 400, y: 150, qrCode: 'room201' },
+            { id: 'room202', type: 'room', name: 'Кабинет 202', info: 'Литература', floor: 2, x: 400, y: 250, qrCode: 'room202' },
+            { id: 'stairs1_f2', type: 'stair', name: 'Лестница 1', info: 'На 1 и 3 этаж', floor: 2, connectsToFloors: [1, 3], x: 550, y: 200, qrCode: 'stairs1_f2' },
+            { id: 'stairs2_f2', type: 'stair', name: 'Лестница 2', info: 'На 3 этаж', floor: 2, connectsToFloor: 3, x: 100, y: 200, qrCode: 'stairs2_f2' }
         ];
         
-        // Floor 3 nodes
+        // Floor 3 nodes with corridors
         const floor3Nodes = [
-            { id: 'room301', type: 'room', name: 'Кабинет 301', info: 'Информатика', floor: 3, x: 150, y: 150, qrCode: 'room301' },
-            { id: 'room302', type: 'room', name: 'Кабинет 302', info: 'Английский', floor: 3, x: 300, y: 150, qrCode: 'room302' },
-            { id: 'room303', type: 'room', name: 'Кабинет 303', info: 'География', floor: 3, x: 150, y: 300, qrCode: 'room303' },
-            { id: 'stairs1_f3', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', floor: 3, connectsToFloor: 2, x: 450, y: 220, qrCode: 'stairs1_f3' }
+            { id: 'corridor3_1', type: 'corridor', name: 'Коридор верхний', info: '3 этаж', floor: 3, x: 250, y: 200, qrCode: 'corridor3_1' },
+            { id: 'room301', type: 'room', name: 'Кабинет 301', info: 'Информатика', floor: 3, x: 400, y: 150, qrCode: 'room301' },
+            { id: 'room302', type: 'room', name: 'Кабинет 302', info: 'Английский язык', floor: 3, x: 400, y: 250, qrCode: 'room302' },
+            { id: 'stairs2_f3', type: 'stair', name: 'Лестница 2', info: 'На 2 этаж', floor: 3, connectsToFloor: 2, x: 100, y: 200, qrCode: 'stairs2_f3' }
         ];
 
         // Add all nodes
@@ -184,29 +205,28 @@ class SchoolMapApp {
             this.nodes.set(node.id, node);
         });
 
-        // Add connections within floors
+        // Add connections with new node layout
         this.connections = [
             // Floor 1 connections
-            { from: 'room101', to: 'room102' },
-            { from: 'room102', to: 'stairs1_f1' },
-            { from: 'room101', to: 'room103' },
-            { from: 'room103', to: 'stairs1_f1' },
+            { from: 'exit1', to: 'corridor1_1' },
+            { from: 'corridor1_1', to: 'room101' },
+            { from: 'corridor1_1', to: 'room102' },
+            { from: 'corridor1_1', to: 'stairs1_f1' },
             
             // Floor 2 connections
-            { from: 'stairs1_f2', to: 'room201' },
-            { from: 'room201', to: 'room202' },
-            { from: 'room201', to: 'room203' },
-            { from: 'room202', to: 'stairs1_f2' },
+            { from: 'stairs1_f2', to: 'corridor2_1' },
+            { from: 'stairs2_f2', to: 'corridor2_1' },
+            { from: 'corridor2_1', to: 'room201' },
+            { from: 'corridor2_1', to: 'room202' },
             
             // Floor 3 connections
-            { from: 'stairs1_f3', to: 'room301' },
-            { from: 'room301', to: 'room302' },
-            { from: 'room301', to: 'room303' },
-            { from: 'room302', to: 'stairs1_f3' },
+            { from: 'stairs2_f3', to: 'corridor3_1' },
+            { from: 'corridor3_1', to: 'room301' },
+            { from: 'corridor3_1', to: 'room302' },
             
             // Between floors connections
             { from: 'stairs1_f1', to: 'stairs1_f2' },
-            { from: 'stairs1_f2', to: 'stairs1_f3' }
+            { from: 'stairs2_f2', to: 'stairs2_f3' }
         ];
 
         this.updateNodeSelects();
@@ -266,9 +286,23 @@ class SchoolMapApp {
 
     findNodeAtPosition(pos) {
         for (const [id, node] of this.nodes) {
-            const distance = Math.sqrt((pos.x - node.x) ** 2 + (pos.y - node.y) ** 2);
-            const nodeSize = this.nodeTypes[node.type].size;
-            if (distance <= nodeSize / 2) {
+            const typeConfig = this.nodeTypes[node.type];
+            let isInside = false;
+            
+            if (typeConfig.shape === 'rectangle_long') {
+                // Corridor - rectangular shape
+                const halfWidth = typeConfig.width / 2;
+                const halfHeight = typeConfig.height / 2;
+                isInside = pos.x >= node.x - halfWidth && pos.x <= node.x + halfWidth &&
+                          pos.y >= node.y - halfHeight && pos.y <= node.y + halfHeight;
+            } else {
+                // Other nodes - circular hit detection
+                const distance = Math.sqrt((pos.x - node.x) ** 2 + (pos.y - node.y) ** 2);
+                const nodeSize = typeConfig.size || 50;
+                isInside = distance <= nodeSize / 2;
+            }
+            
+            if (isInside) {
                 return { id, node };
             }
         }
@@ -447,7 +481,8 @@ class SchoolMapApp {
             this.nodes.set(id, node);
             this.updateNodeSelects();
             this.render();
-            this.showNotification(`Добавлен узел: ${node.name} (этаж ${this.currentFloor})`, 'success');
+            const typeName = this.nodeTypes[this.nodeType].name;
+            this.showNotification(`Добавлен ${typeName.toLowerCase()}: ${node.name} (этаж ${this.currentFloor})`, 'success');
         }
     }
     
@@ -931,8 +966,6 @@ class SchoolMapApp {
     
     // Floor management methods
     switchFloor(floorNumber) {
-        if (floorNumber < 1 || floorNumber > this.maxFloors) return;
-        
         this.currentFloor = floorNumber;
         
         // Update floor buttons
@@ -966,17 +999,109 @@ class SchoolMapApp {
         this.maxFloors++;
         const floorNumber = this.maxFloors;
         
-        // Add new floor button
+        // Add new floor button with delete button
         const addBtn = document.getElementById('addFloor');
+        const floorContainer = document.createElement('div');
+        floorContainer.className = 'floor-with-delete';
+        
         const newFloorBtn = document.createElement('button');
         newFloorBtn.className = 'floor-btn';
         newFloorBtn.dataset.floor = floorNumber;
         newFloorBtn.textContent = `Этаж ${floorNumber}`;
         newFloorBtn.addEventListener('click', () => this.switchFloor(floorNumber));
         
-        addBtn.parentNode.insertBefore(newFloorBtn, addBtn);
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'floor-delete-btn';
+        deleteBtn.dataset.floor = floorNumber;
+        deleteBtn.title = 'Удалить этаж';
+        deleteBtn.innerHTML = '×';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showDeleteFloorConfirmation(floorNumber);
+        });
         
+        floorContainer.appendChild(newFloorBtn);
+        floorContainer.appendChild(deleteBtn);
+        addBtn.parentNode.insertBefore(floorContainer, addBtn);
+        
+        this.updateFloorDeleteButtons();
         this.showNotification(`Добавлен этаж ${floorNumber}`, 'success');
+    }
+    
+    showDeleteFloorConfirmation(floorNumber) {
+        this.floorToDelete = floorNumber;
+        const modal = document.getElementById('deleteFloorModal');
+        const text = document.getElementById('deleteFloorText');
+        text.textContent = `Вы уверены, что хотите удалить Этаж ${floorNumber}? Все узлы и связи на этом этаже будут удалены.`;
+        modal.classList.add('show');
+    }
+    
+    closeDeleteFloorModal() {
+        document.getElementById('deleteFloorModal').classList.remove('show');
+        this.floorToDelete = null;
+    }
+    
+    confirmDeleteFloor() {
+        if (!this.floorToDelete) return;
+        
+        const floorNumber = this.floorToDelete;
+        
+        // Count total floors
+        const totalFloors = document.querySelectorAll('.floor-btn:not(.add-floor)').length;
+        if (totalFloors <= 1) {
+            this.showNotification('Нельзя удалить последний этаж', 'warning');
+            this.closeDeleteFloorModal();
+            return;
+        }
+        
+        // Remove nodes on this floor
+        const nodesToDelete = [];
+        for (const [id, node] of this.nodes) {
+            if (node.floor === floorNumber) {
+                nodesToDelete.push(id);
+            }
+        }
+        
+        // Delete nodes and connections
+        nodesToDelete.forEach(nodeId => {
+            this.nodes.delete(nodeId);
+            this.connections = this.connections.filter(conn => 
+                conn.from !== nodeId && conn.to !== nodeId
+            );
+        });
+        
+        // Remove floor button
+        const floorContainer = document.querySelector(`[data-floor="${floorNumber}"]`).closest('.floor-with-delete');
+        if (floorContainer) {
+            floorContainer.remove();
+        }
+        
+        // Switch to first available floor if current floor was deleted
+        if (this.currentFloor === floorNumber) {
+            const firstFloorBtn = document.querySelector('.floor-btn:not(.add-floor)');
+            if (firstFloorBtn) {
+                const firstFloor = parseInt(firstFloorBtn.dataset.floor);
+                this.switchFloor(firstFloor);
+            }
+        }
+        
+        this.updateNodeSelects();
+        this.updateFloorDeleteButtons();
+        this.render();
+        this.closeDeleteFloorModal();
+        this.showNotification(`Этаж ${floorNumber} удалён`, 'success');
+    }
+    
+    updateFloorDeleteButtons() {
+        const floorButtons = document.querySelectorAll('.floor-btn:not(.add-floor)');
+        const deleteButtons = document.querySelectorAll('.floor-delete-btn');
+        
+        // Hide all delete buttons if only one floor remains
+        if (floorButtons.length <= 1) {
+            deleteButtons.forEach(btn => btn.style.display = 'none');
+        } else {
+            deleteButtons.forEach(btn => btn.style.display = 'flex');
+        }
     }
     
     getNodesOnFloor(floorNumber) {
@@ -1120,6 +1245,25 @@ class SchoolMapApp {
                 case 'rectangle':
                     this.ctx.fillRect(node.x - size/2, node.y - size/2, size, size);
                     this.ctx.strokeRect(node.x - size/2, node.y - size/2, size, size);
+                    break;
+                case 'rectangle_long':
+                    // Corridor - long rectangle
+                    const halfWidth = typeConfig.width / 2;
+                    const halfHeight = typeConfig.height / 2;
+                    this.ctx.fillRect(node.x - halfWidth, node.y - halfHeight, typeConfig.width, typeConfig.height);
+                    this.ctx.strokeRect(node.x - halfWidth, node.y - halfHeight, typeConfig.width, typeConfig.height);
+                    break;
+                case 'pentagon':
+                    // Exit - pentagon (house shape)
+                    const radius = size / 2;
+                    this.ctx.moveTo(node.x, node.y - radius);
+                    this.ctx.lineTo(node.x + radius * 0.6, node.y - radius * 0.2);
+                    this.ctx.lineTo(node.x + radius * 0.4, node.y + radius);
+                    this.ctx.lineTo(node.x - radius * 0.4, node.y + radius);
+                    this.ctx.lineTo(node.x - radius * 0.6, node.y - radius * 0.2);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                    this.ctx.stroke();
                     break;
                 case 'circle':
                     this.ctx.arc(node.x, node.y, size/2, 0, 2 * Math.PI);

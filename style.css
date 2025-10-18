@@ -783,21 +783,35 @@ select.form-control {
   --color-bg-7: rgba(236, 72, 153, 0.08); /* Light pink */
   --color-bg-8: rgba(6, 182, 212, 0.08); /* Light cyan */
 
+  /* School 1430 Color Scheme (Light Mode) */
+  --color-school-primary: #0066B3;
+  --color-school-primary-hover: #004C8C;
+  --color-school-primary-active: #003366;
+  --color-school-accent: #F37021;
+  --color-school-accent-hover: #D05F1A;
+  --color-school-accent-active: #B8501A;
+  --color-school-bg: #FFFFFF;
+  --color-school-secondary-bg: #F5F5F5;
+  --color-school-text: #333333;
+  --color-school-headers: #0066B3;
+  --color-school-borders: #E0E0E0;
+  --color-school-canvas: #FAFAFA;
+
   /* Semantic Color Tokens (Light Mode) */
-  --color-background: var(--color-cream-50);
-  --color-surface: var(--color-cream-100);
-  --color-text: var(--color-slate-900);
-  --color-text-secondary: var(--color-slate-500);
-  --color-primary: var(--color-teal-500);
-  --color-primary-hover: var(--color-teal-600);
-  --color-primary-active: var(--color-teal-700);
-  --color-secondary: rgba(var(--color-brown-600-rgb), 0.12);
-  --color-secondary-hover: rgba(var(--color-brown-600-rgb), 0.2);
-  --color-secondary-active: rgba(var(--color-brown-600-rgb), 0.25);
-  --color-border: rgba(var(--color-brown-600-rgb), 0.2);
-  --color-btn-primary-text: var(--color-cream-50);
-  --color-card-border: rgba(var(--color-brown-600-rgb), 0.12);
-  --color-card-border-inner: rgba(var(--color-brown-600-rgb), 0.12);
+  --color-background: var(--color-school-bg);
+  --color-surface: var(--color-school-secondary-bg);
+  --color-text: var(--color-school-text);
+  --color-text-secondary: #666666;
+  --color-primary: var(--color-school-primary);
+  --color-primary-hover: var(--color-school-primary-hover);
+  --color-primary-active: var(--color-school-primary-active);
+  --color-secondary: rgba(224, 224, 224, 0.3);
+  --color-secondary-hover: rgba(224, 224, 224, 0.5);
+  --color-secondary-active: rgba(224, 224, 224, 0.7);
+  --color-border: var(--color-school-borders);
+  --color-btn-primary-text: #FFFFFF;
+  --color-card-border: var(--color-school-borders);
+  --color-card-border-inner: var(--color-school-borders);
   --color-error: var(--color-red-500);
   --color-success: var(--color-teal-500);
   --color-warning: var(--color-orange-500);
@@ -889,10 +903,24 @@ select.form-control {
 /* Dark mode colors */
 @media (prefers-color-scheme: dark) {
   :root {
+    /* School 1430 Dark Theme Colors */
+    --color-school-primary: #4A9FD8;
+    --color-school-primary-hover: #6BB3E0;
+    --color-school-primary-active: #2E8BC8;
+    --color-school-accent: #FF8C42;
+    --color-school-accent-hover: #FFA366;
+    --color-school-accent-active: #E67A2E;
+    --color-school-bg: #1E1E1E;
+    --color-school-secondary-bg: #2A2A2A;
+    --color-school-text: #E0E0E0;
+    --color-school-headers: #4A9FD8;
+    --color-school-borders: #444444;
+    --color-school-canvas: #252525;
+    
     --color-gray-400-rgb: 119, 124, 124;
-    --color-teal-300-rgb: 50, 184, 198;
+    --color-teal-300-rgb: 74, 159, 216;
     --color-gray-300-rgb: 167, 169, 169;
-    --color-gray-200-rgb: 245, 245, 245;
+    --color-gray-200-rgb: 224, 224, 224;
 
     --color-bg-1: rgba(29, 78, 216, 0.15);
     --color-bg-2: rgba(180, 83, 9, 0.15);
@@ -903,13 +931,13 @@ select.form-control {
     --color-bg-7: rgba(190, 24, 93, 0.15);
     --color-bg-8: rgba(8, 145, 178, 0.15);
 
-    --color-background: var(--color-charcoal-700);
-    --color-surface: var(--color-charcoal-800);
-    --color-text: var(--color-gray-200);
+    --color-background: var(--color-school-bg);
+    --color-surface: var(--color-school-secondary-bg);
+    --color-text: var(--color-school-text);
     --color-text-secondary: rgba(var(--color-gray-300-rgb), 0.7);
-    --color-primary: var(--color-teal-300);
-    --color-primary-hover: var(--color-teal-400);
-    --color-primary-active: var(--color-teal-800);
+    --color-primary: var(--color-school-primary);
+    --color-primary-hover: var(--color-school-primary-hover);
+    --color-primary-active: var(--color-school-primary-active);
     --color-secondary: rgba(var(--color-gray-400-rgb), 0.15);
     --color-secondary-hover: rgba(var(--color-gray-400-rgb), 0.25);
     --color-secondary-active: rgba(var(--color-gray-400-rgb), 0.3);
@@ -934,10 +962,24 @@ select.form-control {
 }
 
 [data-color-scheme="dark"] {
+  /* School 1430 Dark Theme Colors */
+  --color-school-primary: #4A9FD8;
+  --color-school-primary-hover: #6BB3E0;
+  --color-school-primary-active: #2E8BC8;
+  --color-school-accent: #FF8C42;
+  --color-school-accent-hover: #FFA366;
+  --color-school-accent-active: #E67A2E;
+  --color-school-bg: #1E1E1E;
+  --color-school-secondary-bg: #2A2A2A;
+  --color-school-text: #E0E0E0;
+  --color-school-headers: #4A9FD8;
+  --color-school-borders: #444444;
+  --color-school-canvas: #252525;
+  
   --color-gray-400-rgb: 119, 124, 124;
-  --color-teal-300-rgb: 50, 184, 198;
+  --color-teal-300-rgb: 74, 159, 216;
   --color-gray-300-rgb: 167, 169, 169;
-  --color-gray-200-rgb: 245, 245, 245;
+  --color-gray-200-rgb: 224, 224, 224;
 
   --color-bg-1: rgba(29, 78, 216, 0.15);
   --color-bg-2: rgba(180, 83, 9, 0.15);
@@ -948,13 +990,13 @@ select.form-control {
   --color-bg-7: rgba(190, 24, 93, 0.15);
   --color-bg-8: rgba(8, 145, 178, 0.15);
 
-  --color-background: var(--color-charcoal-700);
-  --color-surface: var(--color-charcoal-800);
-  --color-text: var(--color-gray-200);
+  --color-background: var(--color-school-bg);
+  --color-surface: var(--color-school-secondary-bg);
+  --color-text: var(--color-school-text);
   --color-text-secondary: rgba(var(--color-gray-300-rgb), 0.7);
-  --color-primary: var(--color-teal-300);
-  --color-primary-hover: var(--color-teal-400);
-  --color-primary-active: var(--color-teal-800);
+  --color-primary: var(--color-school-primary);
+  --color-primary-hover: var(--color-school-primary-hover);
+  --color-primary-active: var(--color-school-primary-active);
   --color-secondary: rgba(var(--color-gray-400-rgb), 0.15);
   --color-secondary-hover: rgba(var(--color-gray-400-rgb), 0.25);
   --color-secondary-active: rgba(var(--color-gray-400-rgb), 0.3);
@@ -978,17 +1020,31 @@ select.form-control {
 }
 
 [data-color-scheme="light"] {
+  /* School 1430 Light Theme Colors */
+  --color-school-primary: #0066B3;
+  --color-school-primary-hover: #004C8C;
+  --color-school-primary-active: #003366;
+  --color-school-accent: #F37021;
+  --color-school-accent-hover: #D05F1A;
+  --color-school-accent-active: #B8501A;
+  --color-school-bg: #FFFFFF;
+  --color-school-secondary-bg: #F5F5F5;
+  --color-school-text: #333333;
+  --color-school-headers: #0066B3;
+  --color-school-borders: #E0E0E0;
+  --color-school-canvas: #FAFAFA;
+  
   --color-brown-600-rgb: 94, 82, 64;
-  --color-teal-500-rgb: 33, 128, 141;
-  --color-slate-900-rgb: 19, 52, 59;
+  --color-teal-500-rgb: 0, 102, 179;
+  --color-slate-900-rgb: 51, 51, 51;
 
-  --color-background: var(--color-cream-50);
-  --color-surface: var(--color-cream-100);
-  --color-text: var(--color-slate-900);
-  --color-text-secondary: var(--color-slate-500);
-  --color-primary: var(--color-teal-500);
-  --color-primary-hover: var(--color-teal-600);
-  --color-primary-active: var(--color-teal-700);
+  --color-background: var(--color-school-bg);
+  --color-surface: var(--color-school-secondary-bg);
+  --color-text: var(--color-school-text);
+  --color-text-secondary: #666666;
+  --color-primary: var(--color-school-primary);
+  --color-primary-hover: var(--color-school-primary-hover);
+  --color-primary-active: var(--color-school-primary-active);
   --color-secondary: rgba(var(--color-brown-600-rgb), 0.12);
   --color-secondary-hover: rgba(var(--color-brown-600-rgb), 0.2);
   --color-secondary-active: rgba(var(--color-brown-600-rgb), 0.25);
@@ -1235,7 +1291,7 @@ select.form-control {
 /* Layout */
 .header {
   height: var(--header-height);
-  background-color: var(--color-surface);
+  background-color: var(--color-primary);
   border-bottom: 1px solid var(--color-border);
   position: fixed;
   top: 0;
@@ -1253,10 +1309,20 @@ select.form-control {
   padding: 0 var(--space-16);
 }
 
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+.school-logo {
+  font-size: var(--font-size-2xl);
+}
+
 .header-title {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-text);
+  color: var(--color-btn-primary-text);
   margin: 0;
 }
 
@@ -1297,14 +1363,51 @@ select.form-control {
 }
 
 .floor-btn.add-floor {
-  background: var(--color-success);
+  background: var(--color-school-accent);
   color: var(--color-btn-primary-text);
   min-width: 32px;
   font-weight: var(--font-weight-bold);
 }
 
 .floor-btn.add-floor:hover {
-  background: var(--color-teal-600);
+  background: var(--color-school-accent-hover);
+}
+
+.floor-with-delete {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.floor-delete-btn {
+  background: #E74C3C;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--duration-fast) var(--ease-standard);
+  z-index: 10;
+}
+
+.floor-delete-btn:hover {
+  background: #C0392B;
+  transform: scale(1.1);
+}
+
+.btn-delete {
+  background: #E74C3C !important;
+  color: white !important;
+}
+
+.btn-delete:hover {
+  background: #C0392B !important;
 }
 
 .current-floor-indicator {
@@ -1354,17 +1457,19 @@ select.form-control {
 }
 
 .theme-toggle {
-  background: var(--color-secondary);
-  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   padding: var(--space-8);
   border-radius: var(--radius-base);
   cursor: pointer;
   font-size: var(--font-size-lg);
-  transition: background-color var(--duration-fast) var(--ease-standard);
+  color: white;
+  transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .theme-toggle:hover {
-  background: var(--color-secondary-hover);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .app-container {
@@ -1430,6 +1535,18 @@ select.form-control {
   clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
+.node-preview.corridor {
+  background-color: #9b59b6;
+  width: 24px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.node-preview.exit {
+  background-color: #e74c3c;
+  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+}
+
 
 
 .main-content {
@@ -1442,7 +1559,7 @@ select.form-control {
   width: 100%;
   height: 100%;
   position: relative;
-  background-color: var(--color-background);
+  background-color: var(--color-school-canvas);
   transition: background-color var(--duration-normal) var(--ease-standard);
 }
 
@@ -1632,8 +1749,26 @@ select.form-control {
     display: flex;
     align-items: center;
   }
+  
+  .floor-with-delete {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  
+  .floor-delete-btn {
+    margin-left: 0;
+    margin-top: -4px;
+  }
 
   .header-title {
+    font-size: var(--font-size-md);
+  }
+  
+  .header-logo {
+    gap: var(--space-8);
+  }
+  
+  .school-logo {
     font-size: var(--font-size-lg);
   }
 
