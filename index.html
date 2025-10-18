@@ -15,6 +15,17 @@
                 <span class="hamburger"></span>
             </button>
             <h1 class="header-title">Интерактивная карта школы 1430</h1>
+            <div class="floor-controls">
+                <div class="floor-selector">
+                    <button class="floor-btn active" data-floor="1">Этаж 1</button>
+                    <button class="floor-btn" data-floor="2">Этаж 2</button>
+                    <button class="floor-btn" data-floor="3">Этаж 3</button>
+                    <button class="floor-btn add-floor" id="addFloor">+</button>
+                </div>
+                <div class="current-floor-indicator">
+                    <span id="currentFloorText">Этаж 1</span>
+                </div>
+            </div>
             <button class="theme-toggle" id="themeToggle" aria-label="Переключить тему">
                 <span class="theme-icon">☀️</span>
             </button>
@@ -49,10 +60,7 @@
                             <span class="node-preview stair"></span>
                             Лестница
                         </button>
-                        <button class="btn btn--sm node-type-btn" data-type="door">
-                            <span class="node-preview door"></span>
-                            Дверь
-                        </button>
+
                     </div>
                 </div>
 

@@ -34,9 +34,13 @@ class SchoolMapApp {
         
         this.nodeTypes = {
             room: { color: '#3498db', size: 60, shape: 'rectangle', name: 'Комната' },
-            stair: { color: '#2ecc71', size: 50, shape: 'triangle', name: 'Лестница' },
-            door: { color: '#e67e22', size: 30, shape: 'circle', name: 'Дверь' }
+            stair: { color: '#2ecc71', size: 50, shape: 'triangle', name: 'Лестница' }
         };
+        
+        // Floor management
+        this.currentFloor = 1;
+        this.floors = new Map();
+        this.maxFloors = 3;
         
         this.init();
     }
@@ -117,6 +121,18 @@ class SchoolMapApp {
 
         // Mobile menu
         document.getElementById('menuToggle').addEventListener('click', () => this.toggleSidebar());
+        
+        // Floor controls
+        document.querySelectorAll('.floor-btn').forEach(btn => {
+            if (!btn.classList.contains('add-floor')) {
+                btn.addEventListener('click', (e) => {
+                    const floor = parseInt(e.target.dataset.floor);
+                    this.switchFloor(floor);
+                });
+            }
+        });
+        
+        document.getElementById('addFloor').addEventListener('click', () => this.addFloor());
 
         // Node editor modal
         document.getElementById('closeNodeModal').addEventListener('click', () => this.closeNodeEditor());
@@ -139,22 +155,58 @@ class SchoolMapApp {
     }
 
     initializeExampleNodes() {
-        const exampleNodes = [
-            { id: 'room101', type: 'room', name: 'Кабинет 101', info: 'Математика', x: 150, y: 100, qrCode: 'room101' },
-            { id: 'door1', type: 'door', name: 'Дверь 1', info: 'Вход в коридор', x: 250, y: 100, qrCode: 'door1' },
-            { id: 'stairs1', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', x: 350, y: 100, qrCode: 'stairs1' },
-            { id: 'room201', type: 'room', name: 'Кабинет 201', info: 'Русский язык', x: 450, y: 100, qrCode: 'room201' }
+        // Floor 1 nodes
+        const floor1Nodes = [
+            { id: 'room101', type: 'room', name: 'Кабинет 101', info: 'Математика', floor: 1, x: 150, y: 150, qrCode: 'room101' },
+            { id: 'room102', type: 'room', name: 'Кабинет 102', info: 'Физика', floor: 1, x: 300, y: 150, qrCode: 'room102' },
+            { id: 'room103', type: 'room', name: 'Кабинет 103', info: 'Химия', floor: 1, x: 150, y: 300, qrCode: 'room103' },
+            { id: 'stairs1_f1', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', floor: 1, connectsToFloor: 2, x: 450, y: 220, qrCode: 'stairs1_f1' }
+        ];
+        
+        // Floor 2 nodes
+        const floor2Nodes = [
+            { id: 'room201', type: 'room', name: 'Кабинет 201', info: 'Русский язык', floor: 2, x: 150, y: 150, qrCode: 'room201' },
+            { id: 'room202', type: 'room', name: 'Кабинет 202', info: 'Литература', floor: 2, x: 300, y: 150, qrCode: 'room202' },
+            { id: 'room203', type: 'room', name: 'Кабинет 203', info: 'История', floor: 2, x: 150, y: 300, qrCode: 'room203' },
+            { id: 'stairs1_f2', type: 'stair', name: 'Лестница 1', info: 'На 1 и 3 этаж', floor: 2, connectsToFloors: [1, 3], x: 450, y: 220, qrCode: 'stairs1_f2' }
+        ];
+        
+        // Floor 3 nodes
+        const floor3Nodes = [
+            { id: 'room301', type: 'room', name: 'Кабинет 301', info: 'Информатика', floor: 3, x: 150, y: 150, qrCode: 'room301' },
+            { id: 'room302', type: 'room', name: 'Кабинет 302', info: 'Английский', floor: 3, x: 300, y: 150, qrCode: 'room302' },
+            { id: 'room303', type: 'room', name: 'Кабинет 303', info: 'География', floor: 3, x: 150, y: 300, qrCode: 'room303' },
+            { id: 'stairs1_f3', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', floor: 3, connectsToFloor: 2, x: 450, y: 220, qrCode: 'stairs1_f3' }
         ];
 
-        exampleNodes.forEach(node => {
+        // Add all nodes
+        [...floor1Nodes, ...floor2Nodes, ...floor3Nodes].forEach(node => {
             this.nodes.set(node.id, node);
         });
 
-        // Add some connections
+        // Add connections within floors
         this.connections = [
-            { from: 'room101', to: 'door1' },
-            { from: 'door1', to: 'stairs1' },
-            { from: 'stairs1', to: 'room201' }
+            // Floor 1 connections
+            { from: 'room101', to: 'room102' },
+            { from: 'room102', to: 'stairs1_f1' },
+            { from: 'room101', to: 'room103' },
+            { from: 'room103', to: 'stairs1_f1' },
+            
+            // Floor 2 connections
+            { from: 'stairs1_f2', to: 'room201' },
+            { from: 'room201', to: 'room202' },
+            { from: 'room201', to: 'room203' },
+            { from: 'room202', to: 'stairs1_f2' },
+            
+            // Floor 3 connections
+            { from: 'stairs1_f3', to: 'room301' },
+            { from: 'room301', to: 'room302' },
+            { from: 'room301', to: 'room303' },
+            { from: 'room302', to: 'stairs1_f3' },
+            
+            // Between floors connections
+            { from: 'stairs1_f1', to: 'stairs1_f2' },
+            { from: 'stairs1_f2', to: 'stairs1_f3' }
         ];
 
         this.updateNodeSelects();
@@ -167,11 +219,31 @@ class SchoolMapApp {
         startSelect.innerHTML = '<option value="">Выберите начальную точку</option>';
         endSelect.innerHTML = '<option value="">Выберите конечную точку</option>';
         
+        // Group nodes by floor for better organization
+        const nodesByFloor = {};
         this.nodes.forEach((node, id) => {
-            const option1 = new Option(node.name, id);
-            const option2 = new Option(node.name, id);
-            startSelect.add(option1);
-            endSelect.add(option2);
+            if (!nodesByFloor[node.floor]) {
+                nodesByFloor[node.floor] = [];
+            }
+            nodesByFloor[node.floor].push({ id, node });
+        });
+        
+        // Add options grouped by floor
+        Object.keys(nodesByFloor).sort((a, b) => a - b).forEach(floor => {
+            const floorGroup1 = document.createElement('optgroup');
+            const floorGroup2 = document.createElement('optgroup');
+            floorGroup1.label = `Этаж ${floor}`;
+            floorGroup2.label = `Этаж ${floor}`;
+            
+            nodesByFloor[floor].forEach(({ id, node }) => {
+                const option1 = new Option(node.name, id);
+                const option2 = new Option(node.name, id);
+                floorGroup1.appendChild(option1);
+                floorGroup2.appendChild(option2);
+            });
+            
+            startSelect.appendChild(floorGroup1);
+            endSelect.appendChild(floorGroup2);
         });
     }
 
@@ -352,20 +424,67 @@ class SchoolMapApp {
     addNode(pos) {
         const id = `node_${Date.now()}`;
         const typeConfig = this.nodeTypes[this.nodeType];
+        
+        // Count nodes of this type on current floor for naming
+        const nodesOnFloor = this.getNodesOnFloor(this.currentFloor);
+        const sameTypeCount = Array.from(nodesOnFloor.values()).filter(n => n.type === this.nodeType).length;
+        
         const node = {
             id,
             type: this.nodeType,
-            name: `${typeConfig.name} ${this.nodes.size + 1}`,
+            name: `${typeConfig.name} ${this.currentFloor}${String(sameTypeCount + 1).padStart(2, '0')}`,
             info: '',
+            floor: this.currentFloor,
             x: pos.x,
             y: pos.y,
             qrCode: id
         };
         
-        this.nodes.set(id, node);
+        // If it's a stair, ask which floor it connects to
+        if (this.nodeType === 'stair') {
+            this.promptStairConnection(node);
+        } else {
+            this.nodes.set(id, node);
+            this.updateNodeSelects();
+            this.render();
+            this.showNotification(`Добавлен узел: ${node.name} (этаж ${this.currentFloor})`, 'success');
+        }
+    }
+    
+    promptStairConnection(stairNode) {
+        const availableFloors = [];
+        for (let i = 1; i <= this.maxFloors; i++) {
+            if (i !== this.currentFloor) {
+                availableFloors.push(i);
+            }
+        }
+        
+        if (availableFloors.length === 0) {
+            this.showNotification('Нет доступных этажей для соединения', 'warning');
+            return;
+        }
+        
+        let connectsTo;
+        if (availableFloors.length === 1) {
+            connectsTo = availableFloors[0];
+        } else {
+            const floorList = availableFloors.join(', ');
+            const input = prompt(`Лестница на ${this.currentFloor} этаже. На какой этаж она ведет? (Доступны: ${floorList})`);
+            connectsTo = parseInt(input);
+            
+            if (!availableFloors.includes(connectsTo)) {
+                this.showNotification('Неверный этаж', 'error');
+                return;
+            }
+        }
+        
+        stairNode.connectsToFloor = connectsTo;
+        stairNode.info = `На ${connectsTo} этаж`;
+        
+        this.nodes.set(stairNode.id, stairNode);
         this.updateNodeSelects();
         this.render();
-        this.showNotification(`Добавлен узел: ${node.name}`, 'success');
+        this.showNotification(`Добавлена лестница: с ${this.currentFloor} на ${connectsTo} этаж`, 'success');
     }
 
     deleteNode(nodeId) {
@@ -587,34 +706,57 @@ class SchoolMapApp {
     // Voice navigation
     generateVoiceInstructions(path) {
         this.voiceInstructions = [];
+        let currentFloorInPath = null;
         
         for (let i = 0; i < path.length; i++) {
             const currentNode = this.nodes.get(path[i]);
+            const nextNode = i < path.length - 1 ? this.nodes.get(path[i + 1]) : null;
             
             if (i === 0) {
-                this.voiceInstructions.push(`Начинаем движение от ${currentNode.name}`);
+                currentFloorInPath = currentNode.floor;
+                this.voiceInstructions.push({
+                    text: `Начинаем движение от ${currentNode.name}. Вы находитесь на ${currentNode.floor} этаже`,
+                    floor: currentNode.floor,
+                    nodeId: currentNode.id
+                });
             } else if (i === path.length - 1) {
-                this.voiceInstructions.push(`Вы прибыли в ${currentNode.name}`);
+                this.voiceInstructions.push({
+                    text: `Вы прибыли в ${currentNode.name}`,
+                    floor: currentNode.floor,
+                    nodeId: currentNode.id
+                });
             } else {
-                const nextNode = this.nodes.get(path[i + 1]);
                 let instruction = '';
                 
-                switch (currentNode.type) {
-                    case 'door':
-                        instruction = `Пройдите через ${currentNode.name}`;
-                        break;
-                    case 'stair':
-                        instruction = `Используйте ${currentNode.name}`;
-                        break;
-                    default:
-                        instruction = `Проследуйте через ${currentNode.name}`;
+                // Handle floor transitions
+                if (currentNode.type === 'stair' && nextNode && currentNode.floor !== nextNode.floor) {
+                    const direction = nextNode.floor > currentNode.floor ? 'Поднимитесь' : 'Спуститесь';
+                    instruction = `${direction} по лестнице на ${nextNode.floor} этаж`;
+                    currentFloorInPath = nextNode.floor;
+                } else {
+                    switch (currentNode.type) {
+                        case 'stair':
+                            if (nextNode) {
+                                instruction = `От лестницы направляйтесь к ${nextNode.name}`;
+                            } else {
+                                instruction = `Используйте ${currentNode.name}`;
+                            }
+                            break;
+                        default:
+                            if (nextNode) {
+                                instruction = `От ${currentNode.name} направляйтесь к ${nextNode.name}`;
+                            } else {
+                                instruction = `Проследуйте через ${currentNode.name}`;
+                            }
+                    }
                 }
                 
-                if (nextNode) {
-                    instruction += ` в направлении ${nextNode.name}`;
-                }
-                
-                this.voiceInstructions.push(instruction);
+                this.voiceInstructions.push({
+                    text: instruction,
+                    floor: currentFloorInPath,
+                    nodeId: currentNode.id,
+                    switchToFloor: currentNode.type === 'stair' && nextNode && currentNode.floor !== nextNode.floor ? nextNode.floor : null
+                });
             }
         }
         
@@ -786,6 +928,74 @@ class SchoolMapApp {
         const sidebar = document.getElementById('sidebar');
         sidebar.classList.toggle('show');
     }
+    
+    // Floor management methods
+    switchFloor(floorNumber) {
+        if (floorNumber < 1 || floorNumber > this.maxFloors) return;
+        
+        this.currentFloor = floorNumber;
+        
+        // Update floor buttons
+        document.querySelectorAll('.floor-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (parseInt(btn.dataset.floor) === floorNumber) {
+                btn.classList.add('active');
+            }
+        });
+        
+        // Update current floor indicator
+        document.getElementById('currentFloorText').textContent = `Этаж ${floorNumber}`;
+        
+        // Clear current selection and connections
+        this.selectedNode = null;
+        this.connectingNodes = [];
+        
+        // Update node selects to show only current floor nodes
+        this.updateNodeSelects();
+        
+        this.render();
+        this.showNotification(`Переключились на этаж ${floorNumber}`, 'info');
+    }
+    
+    addFloor() {
+        if (this.maxFloors >= 10) {
+            this.showNotification('Максимальное количество этажей: 10', 'warning');
+            return;
+        }
+        
+        this.maxFloors++;
+        const floorNumber = this.maxFloors;
+        
+        // Add new floor button
+        const addBtn = document.getElementById('addFloor');
+        const newFloorBtn = document.createElement('button');
+        newFloorBtn.className = 'floor-btn';
+        newFloorBtn.dataset.floor = floorNumber;
+        newFloorBtn.textContent = `Этаж ${floorNumber}`;
+        newFloorBtn.addEventListener('click', () => this.switchFloor(floorNumber));
+        
+        addBtn.parentNode.insertBefore(newFloorBtn, addBtn);
+        
+        this.showNotification(`Добавлен этаж ${floorNumber}`, 'success');
+    }
+    
+    getNodesOnFloor(floorNumber) {
+        const nodesOnFloor = new Map();
+        for (const [id, node] of this.nodes) {
+            if (node.floor === floorNumber || 
+                (node.type === 'stair' && this.isStairOnFloor(node, floorNumber))) {
+                nodesOnFloor.set(id, node);
+            }
+        }
+        return nodesOnFloor;
+    }
+    
+    isStairOnFloor(stairNode, floorNumber) {
+        if (stairNode.floor === floorNumber) return true;
+        if (stairNode.connectsToFloor === floorNumber) return true;
+        if (stairNode.connectsToFloors && stairNode.connectsToFloors.includes(floorNumber)) return true;
+        return false;
+    }
 
     // Notification system
     showNotification(message, type = 'info') {
@@ -826,17 +1036,34 @@ class SchoolMapApp {
         this.ctx.strokeStyle = this.isDarkTheme ? '#4a5568' : '#a0aec0';
         this.ctx.lineWidth = 2;
         
+        const nodesOnCurrentFloor = this.getNodesOnFloor(this.currentFloor);
+        
         for (const conn of this.connections) {
             const fromNode = this.nodes.get(conn.from);
             const toNode = this.nodes.get(conn.to);
             
-            if (fromNode && toNode) {
+            // Only draw connections if both nodes are visible on current floor
+            if (fromNode && toNode && 
+                nodesOnCurrentFloor.has(conn.from) && 
+                nodesOnCurrentFloor.has(conn.to)) {
+                
+                // Different style for inter-floor connections
+                if (fromNode.floor !== toNode.floor) {
+                    this.ctx.strokeStyle = this.isDarkTheme ? '#9f7aea' : '#805ad5';
+                    this.ctx.setLineDash([5, 5]);
+                } else {
+                    this.ctx.strokeStyle = this.isDarkTheme ? '#4a5568' : '#a0aec0';
+                    this.ctx.setLineDash([]);
+                }
+                
                 this.ctx.beginPath();
                 this.ctx.moveTo(fromNode.x, fromNode.y);
                 this.ctx.lineTo(toNode.x, toNode.y);
                 this.ctx.stroke();
             }
         }
+        
+        this.ctx.setLineDash([]);
     }
 
     drawPath() {
@@ -875,7 +1102,9 @@ class SchoolMapApp {
     }
 
     drawNodes() {
-        for (const [id, node] of this.nodes) {
+        const nodesOnCurrentFloor = this.getNodesOnFloor(this.currentFloor);
+        
+        for (const [id, node] of nodesOnCurrentFloor) {
             const typeConfig = this.nodeTypes[node.type];
             const isSelected = this.connectingNodes.includes(id);
             
@@ -907,11 +1136,26 @@ class SchoolMapApp {
                     break;
             }
             
+            // Draw floor indicator for stairs
+            if (node.type === 'stair' && node.connectsToFloor) {
+                this.ctx.fillStyle = this.isDarkTheme ? '#f7fafc' : '#1a202c';
+                this.ctx.font = '10px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(`→${node.connectsToFloor}`, node.x, node.y - size/2 - 8);
+            }
+            
             // Draw node label
             this.ctx.fillStyle = this.isDarkTheme ? '#f7fafc' : '#1a202c';
             this.ctx.font = '12px Arial';
             this.ctx.textAlign = 'center';
             this.ctx.fillText(node.name, node.x, node.y + size/2 + 15);
+            
+            // Draw floor number for non-current floor stairs
+            if (node.type === 'stair' && node.floor !== this.currentFloor) {
+                this.ctx.fillStyle = this.isDarkTheme ? '#90cdf4' : '#3182ce';
+                this.ctx.font = '10px Arial';
+                this.ctx.fillText(`(Этаж ${node.floor})`, node.x, node.y + size/2 + 28);
+            }
         }
     }
 

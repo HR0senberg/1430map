@@ -1260,6 +1260,63 @@ select.form-control {
   margin: 0;
 }
 
+.floor-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+}
+
+.floor-selector {
+  display: flex;
+  gap: var(--space-4);
+  background: var(--color-secondary);
+  border-radius: var(--radius-base);
+  padding: var(--space-4);
+}
+
+.floor-btn {
+  background: transparent;
+  border: none;
+  padding: var(--space-6) var(--space-12);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-standard);
+  min-width: 60px;
+}
+
+.floor-btn:hover {
+  background: var(--color-secondary-hover);
+}
+
+.floor-btn.active {
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.floor-btn.add-floor {
+  background: var(--color-success);
+  color: var(--color-btn-primary-text);
+  min-width: 32px;
+  font-weight: var(--font-weight-bold);
+}
+
+.floor-btn.add-floor:hover {
+  background: var(--color-teal-600);
+}
+
+.current-floor-indicator {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  padding: var(--space-6) var(--space-12);
+  background: var(--color-bg-1);
+  border-radius: var(--radius-base);
+  border: 1px solid var(--color-border);
+}
+
 .menu-toggle {
   display: none;
   background: transparent;
@@ -1373,10 +1430,7 @@ select.form-control {
   clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
-.node-preview.door {
-  background-color: #e67e22;
-  border-radius: 50%;
-}
+
 
 .main-content {
   flex: 1;
