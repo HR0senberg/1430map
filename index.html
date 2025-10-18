@@ -52,7 +52,7 @@
                 <div class="control-group">
                     <h3>Режим работы</h3>
                     <div class="mode-buttons">
-                        <button class="btn btn--sm mode-btn active" data-mode="pan">🖐️ Панорама</button>
+                        <button class="btn btn--sm mode-btn active" data-mode="view">🗺️ Интерактивная карта</button>
                         <button class="btn btn--sm mode-btn" data-mode="add">➕ Добавить</button>
                         <button class="btn btn--sm mode-btn" data-mode="edit">✏️ Редактировать</button>
                         <button class="btn btn--sm mode-btn" data-mode="connect">🔗 Соединить</button>
@@ -131,6 +131,7 @@
                         <button class="btn btn--outline" id="stopVoiceNav" style="display: none;">⏹️ Остановить</button>
                         <div class="voice-step-controls" id="voiceStepControls" style="display: none;">
                             <button class="btn btn--sm" id="prevStep">⬅️ Предыдущая</button>
+                            <button class="btn btn--sm" id="repeatStep">🔄 Повторить</button>
                             <button class="btn btn--sm" id="nextStep">➡️ Следующая</button>
                         </div>
                         <div class="current-instruction" id="currentInstruction"></div>
@@ -222,6 +223,27 @@
                 <div class="modal-actions">
                     <button class="btn btn--primary btn-delete" id="confirmDeleteFloor">Да, удалить</button>
                     <button class="btn btn--outline" id="cancelDeleteFloor">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div class="modal" id="passwordModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Требуется пароль администратора</h2>
+                <button class="modal-close" id="closePasswordModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Для редактирования карты введите пароль:</p>
+                <div class="form-group">
+                    <input type="password" class="form-control" id="passwordInput" placeholder="Введите пароль" autocomplete="off">
+                </div>
+                <div id="passwordError" class="password-error" style="display: none;">Неверный пароль. Попробуйте ещё раз.</div>
+                <div class="modal-actions">
+                    <button class="btn btn--primary" id="confirmPassword">Войти</button>
+                    <button class="btn btn--outline" id="cancelPassword">Отмена</button>
                 </div>
             </div>
         </div>

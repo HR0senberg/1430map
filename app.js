@@ -5,6 +5,12 @@ class SchoolMapApp {
         this.isDarkTheme = false;
         this.floorToDelete = null;
         
+        // Authentication
+        this.isAuthenticated = false;
+        this.adminPassword = '1430';
+        this.pendingAction = null;
+        this.pendingActionData = null;
+        
         // Map data
         this.nodes = new Map();
         this.connections = [];
@@ -12,7 +18,7 @@ class SchoolMapApp {
         this.currentLocation = null;
         
         // Interaction state
-        this.mode = 'pan';
+        this.mode = 'view';
         this.nodeType = 'room';
         this.selectedNode = null;
         this.connectingNodes = [];
@@ -29,6 +35,9 @@ class SchoolMapApp {
         this.voiceInstructions = [];
         this.currentInstructionIndex = 0;
         this.isVoiceNavigating = false;
+        this.speechSynthesis = window.speechSynthesis;
+        this.voices = [];
+        this.selectedVoice = null;
         
         // QR Scanner
         this.qrScanner = null;
@@ -54,8 +63,106 @@ class SchoolMapApp {
         this.setupCanvas();
         this.setupEventListeners();
         this.initializeExampleNodes();
+        this.initializeVoices();
         this.render();
         window.addEventListener('resize', () => this.setupCanvas());
+    }
+    
+    initializeVoices() {
+        // Wait for voices to load
+        if (this.speechSynthesis.getVoices().length === 0) {
+            this.speechSynthesis.addEventListener('voiceschanged', () => {
+                this.loadVoices();
+            });
+        } else {
+            this.loadVoices();
+        }
+    }
+    
+    loadVoices() {
+        this.voices = this.speechSynthesis.getVoices();
+        // Find Russian voice (prefer Google Russian)
+        this.selectedVoice = this.voices.find(voice => 
+            voice.lang === 'ru-RU' && voice.name.includes('Google')
+        ) || this.voices.find(voice => voice.lang === 'ru-RU') || null;
+    }
+    
+    // Authentication methods
+    requirePassword(action, data = null) {
+        if (this.isAuthenticated) {
+            this.executeAction(action, data);
+            return;
+        }
+        
+        this.pendingAction = action;
+        this.pendingActionData = data;
+        this.showPasswordModal();
+    }
+    
+    showPasswordModal() {
+        const modal = document.getElementById('passwordModal');
+        const input = document.getElementById('passwordInput');
+        const error = document.getElementById('passwordError');
+        
+        input.value = '';
+        error.style.display = 'none';
+        modal.classList.add('show');
+        
+        // Focus on input
+        setTimeout(() => input.focus(), 100);
+    }
+    
+    hidePasswordModal() {
+        document.getElementById('passwordModal').classList.remove('show');
+        this.pendingAction = null;
+        this.pendingActionData = null;
+    }
+    
+    checkPassword() {
+        const input = document.getElementById('passwordInput');
+        const error = document.getElementById('passwordError');
+        const password = input.value;
+        
+        if (password === this.adminPassword) {
+            this.isAuthenticated = true;
+            this.hidePasswordModal();
+            this.showNotification('Доступ разрешён', 'success');
+            
+            if (this.pendingAction) {
+                this.executeAction(this.pendingAction, this.pendingActionData);
+            }
+        } else {
+            error.style.display = 'block';
+            input.value = '';
+            input.focus();
+        }
+    }
+    
+    executeAction(action, data) {
+        switch (action) {
+            case 'switchMode':
+                this.switchMode(data.mode, data.element);
+                break;
+            case 'addFloor':
+                this.addFloorAction();
+                break;
+            case 'deleteFloor':
+                this.showDeleteFloorConfirmation(data.floor);
+                break;
+            case 'saveMap':
+                this.saveMapAction();
+                break;
+            case 'loadMap':
+                document.getElementById('loadMapInput').click();
+                break;
+            case 'clearAll':
+                this.clearAllAction();
+                break;
+        }
+    }
+    
+    isProtectedMode(mode) {
+        return ['add', 'edit', 'connect', 'delete', 'move'].includes(mode);
     }
 
     setupCanvas() {
@@ -76,13 +183,26 @@ class SchoolMapApp {
         // Mode buttons
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.mode = e.target.dataset.mode;
-                this.selectedNode = null;
-                this.connectingNodes = [];
-                this.render();
+                const mode = e.target.dataset.mode;
+                
+                if (this.isProtectedMode(mode)) {
+                    this.requirePassword('switchMode', { mode, element: e.target });
+                } else {
+                    this.switchMode(mode, e.target);
+                }
             });
+        });
+        
+        // Password modal events
+        document.getElementById('closePasswordModal').addEventListener('click', () => this.hidePasswordModal());
+        document.getElementById('cancelPassword').addEventListener('click', () => this.hidePasswordModal());
+        document.getElementById('confirmPassword').addEventListener('click', () => this.checkPassword());
+        
+        // Enter key in password input
+        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.checkPassword();
+            }
         });
 
         // Node type buttons
@@ -113,13 +233,26 @@ class SchoolMapApp {
         document.getElementById('startVoiceNav').addEventListener('click', () => this.startVoiceNavigation());
         document.getElementById('stopVoiceNav').addEventListener('click', () => this.stopVoiceNavigation());
         document.getElementById('prevStep').addEventListener('click', () => this.previousInstruction());
+        document.getElementById('repeatStep').addEventListener('click', () => this.repeatCurrentInstruction());
         document.getElementById('nextStep').addEventListener('click', () => this.nextInstruction());
+        
+        // Voice navigation controls
+        document.getElementById('startVoiceNav').innerHTML = '▶️ Начать навигацию';
+        document.getElementById('stopVoiceNav').innerHTML = '⏹️ Остановить';
+        document.getElementById('prevStep').innerHTML = '⬅️ Предыдущая';
+        document.getElementById('nextStep').innerHTML = '➡️ Следующая';
 
         // Map management
-        document.getElementById('saveMap').addEventListener('click', () => this.saveMap());
-        document.getElementById('loadMap').addEventListener('click', () => document.getElementById('loadMapInput').click());
+        document.getElementById('saveMap').addEventListener('click', () => {
+            this.requirePassword('saveMap');
+        });
+        document.getElementById('loadMap').addEventListener('click', () => {
+            this.requirePassword('loadMap');
+        });
         document.getElementById('loadMapInput').addEventListener('change', (e) => this.loadMap(e));
-        document.getElementById('clearAll').addEventListener('click', () => this.clearAll());
+        document.getElementById('clearAll').addEventListener('click', () => {
+            this.requirePassword('clearAll');
+        });
 
         // Theme toggle
         document.getElementById('themeToggle').addEventListener('click', () => this.toggleTheme());
@@ -137,14 +270,16 @@ class SchoolMapApp {
             }
         });
         
-        document.getElementById('addFloor').addEventListener('click', () => this.addFloor());
+        document.getElementById('addFloor').addEventListener('click', () => {
+            this.requirePassword('addFloor');
+        });
         
         // Floor delete buttons
         document.querySelectorAll('.floor-delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const floor = parseInt(e.target.dataset.floor);
-                this.showDeleteFloorConfirmation(floor);
+                this.requirePassword('deleteFloor', { floor });
             });
         });
         
@@ -171,6 +306,15 @@ class SchoolMapApp {
 
         // Prevent context menu
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+    
+    switchMode(mode, element) {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        element.classList.add('active');
+        this.mode = mode;
+        this.selectedNode = null;
+        this.connectingNodes = [];
+        this.render();
     }
 
     initializeExampleNodes() {
@@ -313,7 +457,7 @@ class SchoolMapApp {
         const pos = this.getMousePos(e);
         const foundNode = this.findNodeAtPosition(pos);
 
-        if (this.mode === 'pan') {
+        if (this.mode === 'view' || this.mode === 'pan') {
             if (foundNode) {
                 this.isDragging = true;
                 this.selectedNode = foundNode.id;
@@ -381,7 +525,7 @@ class SchoolMapApp {
             const pos = this.getTouchPos(touch);
             const foundNode = this.findNodeAtPosition(pos);
 
-            if (this.mode === 'pan') {
+            if (this.mode === 'view' || this.mode === 'pan') {
                 if (foundNode) {
                     this.isDragging = true;
                     this.selectedNode = foundNode.id;
@@ -738,60 +882,38 @@ class SchoolMapApp {
         return [];
     }
 
-    // Voice navigation
+    // Voice navigation  
     generateVoiceInstructions(path) {
         this.voiceInstructions = [];
-        let currentFloorInPath = null;
         
         for (let i = 0; i < path.length; i++) {
             const currentNode = this.nodes.get(path[i]);
             const nextNode = i < path.length - 1 ? this.nodes.get(path[i + 1]) : null;
             
+            // Первая инструкция
             if (i === 0) {
-                currentFloorInPath = currentNode.floor;
-                this.voiceInstructions.push({
-                    text: `Начинаем движение от ${currentNode.name}. Вы находитесь на ${currentNode.floor} этаже`,
-                    floor: currentNode.floor,
-                    nodeId: currentNode.id
-                });
-            } else if (i === path.length - 1) {
-                this.voiceInstructions.push({
-                    text: `Вы прибыли в ${currentNode.name}`,
-                    floor: currentNode.floor,
-                    nodeId: currentNode.id
-                });
-            } else {
-                let instruction = '';
-                
-                // Handle floor transitions
-                if (currentNode.type === 'stair' && nextNode && currentNode.floor !== nextNode.floor) {
+                this.voiceInstructions.push(`Начинаем движение от: ${currentNode.name}`);
+                continue;
+            }
+            
+            // Последняя инструкция
+            if (i === path.length - 1) {
+                this.voiceInstructions.push(`Вы прибыли в: ${currentNode.name}`);
+                break;
+            }
+            
+            // Определяем тип узла и формируем инструкцию
+            if (currentNode.type === 'stair') {
+                if (nextNode && nextNode.floor !== currentNode.floor) {
                     const direction = nextNode.floor > currentNode.floor ? 'Поднимитесь' : 'Спуститесь';
-                    instruction = `${direction} по лестнице на ${nextNode.floor} этаж`;
-                    currentFloorInPath = nextNode.floor;
-                } else {
-                    switch (currentNode.type) {
-                        case 'stair':
-                            if (nextNode) {
-                                instruction = `От лестницы направляйтесь к ${nextNode.name}`;
-                            } else {
-                                instruction = `Используйте ${currentNode.name}`;
-                            }
-                            break;
-                        default:
-                            if (nextNode) {
-                                instruction = `От ${currentNode.name} направляйтесь к ${nextNode.name}`;
-                            } else {
-                                instruction = `Проследуйте через ${currentNode.name}`;
-                            }
-                    }
+                    this.voiceInstructions.push(`${direction} по лестнице: ${currentNode.name}. Переход на этаж ${nextNode.floor}`);
                 }
-                
-                this.voiceInstructions.push({
-                    text: instruction,
-                    floor: currentFloorInPath,
-                    nodeId: currentNode.id,
-                    switchToFloor: currentNode.type === 'stair' && nextNode && currentNode.floor !== nextNode.floor ? nextNode.floor : null
-                });
+            } else if (currentNode.type === 'corridor') {
+                this.voiceInstructions.push(`Пройдите через: ${currentNode.name}`);
+            } else if (currentNode.type === 'exit') {
+                this.voiceInstructions.push(`Направляйтесь к выходу: ${currentNode.name}`);
+            } else {
+                this.voiceInstructions.push(`Пройдите к: ${currentNode.name}`);
             }
         }
         
@@ -802,6 +924,12 @@ class SchoolMapApp {
     startVoiceNavigation() {
         if (this.voiceInstructions.length === 0) {
             this.showNotification('Сначала постройте маршрут', 'warning');
+            return;
+        }
+        
+        // Проверяем доступность голосовой навигации
+        if (!this.speechSynthesis) {
+            this.showNotification('Голосовая навигация недоступна. Проверьте настройки устройства.', 'error');
             return;
         }
         
@@ -817,7 +945,9 @@ class SchoolMapApp {
 
     stopVoiceNavigation() {
         this.isVoiceNavigating = false;
-        window.speechSynthesis.cancel();
+        if (this.speechSynthesis) {
+            this.speechSynthesis.cancel();
+        }
         document.getElementById('startVoiceNav').style.display = 'inline-flex';
         document.getElementById('stopVoiceNav').style.display = 'none';
         document.getElementById('voiceStepControls').style.display = 'none';
@@ -842,10 +972,17 @@ class SchoolMapApp {
             this.showNotification('Навигация завершена', 'success');
         }
     }
+    
+    // Add repeat current instruction method
+    repeatCurrentInstruction() {
+        if (this.voiceInstructions.length > 0 && this.currentInstructionIndex < this.voiceInstructions.length) {
+            this.speakCurrentInstruction();
+        }
+    }
 
     updateCurrentInstruction() {
         const instructionEl = document.getElementById('currentInstruction');
-        if (this.voiceInstructions.length > 0) {
+        if (this.voiceInstructions.length > 0 && this.currentInstructionIndex < this.voiceInstructions.length) {
             instructionEl.textContent = `${this.currentInstructionIndex + 1}/${this.voiceInstructions.length}: ${this.voiceInstructions[this.currentInstructionIndex]}`;
         } else {
             instructionEl.textContent = '';
@@ -853,28 +990,62 @@ class SchoolMapApp {
     }
 
     speakCurrentInstruction() {
-        if (this.voiceInstructions.length > 0 && window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(this.voiceInstructions[this.currentInstructionIndex]);
-            utterance.lang = 'ru-RU';
-            utterance.rate = 0.8;
+        if (this.voiceInstructions.length > 0 && this.speechSynthesis && this.currentInstructionIndex < this.voiceInstructions.length) {
+            this.speechSynthesis.cancel();
             
+            const text = this.voiceInstructions[this.currentInstructionIndex];
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // Настройки для русского языка
+            utterance.lang = 'ru-RU';
+            utterance.rate = 0.9;  // Немного медленнее для чёткости
+            utterance.pitch = 1.0;  // Нормальная высота
+            utterance.volume = 1.0; // Максимальная громкость
+            
+            // Используем русский голос, если доступен
+            if (this.selectedVoice) {
+                utterance.voice = this.selectedVoice;
+            }
+            
+            // Обработка окончания воспроизведения
             utterance.onend = () => {
                 if (this.isVoiceNavigating && this.currentInstructionIndex < this.voiceInstructions.length - 1) {
+                    // Пауза 1 секунда между инструкциями
                     setTimeout(() => {
                         if (this.isVoiceNavigating) {
                             this.nextInstruction();
                         }
-                    }, 2000);
+                    }, 1000);
                 } else if (this.currentInstructionIndex === this.voiceInstructions.length - 1) {
-                    this.stopVoiceNavigation();
+                    setTimeout(() => {
+                        this.stopVoiceNavigation();
+                        this.showNotification('Навигация завершена', 'success');
+                    }, 500);
                 }
             };
             
-            window.speechSynthesis.speak(utterance);
+            // Обработка ошибок
+            utterance.onerror = (event) => {
+                console.error('Ошибка голосовой навигации:', event.error);
+                this.showNotification('Ошибка воспроизведения голоса', 'error');
+            };
+            
+            // Отображаем текущую инструкцию на экране
+            this.updateCurrentInstruction();
+            
+            // Запускаем воспроизведение
+            this.speechSynthesis.speak(utterance);
         }
     }
 
+    saveMapAction() {
+        this.saveMap();
+    }
+    
+    clearAllAction() {
+        this.clearAll();
+    }
+    
     // Map management
     saveMap() {
         const mapData = {
@@ -990,6 +1161,10 @@ class SchoolMapApp {
         this.showNotification(`Переключились на этаж ${floorNumber}`, 'info');
     }
     
+    addFloorAction() {
+        this.addFloor();
+    }
+    
     addFloor() {
         if (this.maxFloors >= 10) {
             this.showNotification('Максимальное количество этажей: 10', 'warning');
@@ -1017,7 +1192,7 @@ class SchoolMapApp {
         deleteBtn.innerHTML = '×';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.showDeleteFloorConfirmation(floorNumber);
+            this.requirePassword('deleteFloor', { floor: floorNumber });
         });
         
         floorContainer.appendChild(newFloorBtn);

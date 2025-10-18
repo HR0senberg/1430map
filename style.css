@@ -1861,6 +1861,13 @@ select.form-control {
   outline-offset: 2px;
 }
 
+.password-error {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-8);
+  text-align: center;
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
   .btn {
