@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивная карта школы 1430</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <button class="menu-toggle" id="menuToggle" aria-label="Меню">
+                <span class="hamburger"></span>
+            </button>
+            <h1 class="header-title">Интерактивная карта школы 1430</h1>
+            <button class="theme-toggle" id="themeToggle" aria-label="Переключить тему">
+                <span class="theme-icon">☀️</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-content">
+                <!-- Mode Selection -->
+                <div class="control-group">
+                    <h3>Режим работы</h3>
+                    <div class="mode-buttons">
+                        <button class="btn btn--sm mode-btn active" data-mode="pan">🖐️ Панорама</button>
+                        <button class="btn btn--sm mode-btn" data-mode="add">➕ Добавить</button>
+                        <button class="btn btn--sm mode-btn" data-mode="edit">✏️ Редактировать</button>
+                        <button class="btn btn--sm mode-btn" data-mode="connect">🔗 Соединить</button>
+                        <button class="btn btn--sm mode-btn" data-mode="delete">🗑️ Удалить</button>
+                    </div>
+                </div>
+
+                <!-- Node Types -->
+                <div class="control-group">
+                    <h3>Тип узла</h3>
+                    <div class="node-type-buttons">
+                        <button class="btn btn--sm node-type-btn active" data-type="room">
+                            <span class="node-preview room"></span>
+                            Комната
+                        </button>
+                        <button class="btn btn--sm node-type-btn" data-type="stair">
+                            <span class="node-preview stair"></span>
+                            Лестница
+                        </button>
+                        <button class="btn btn--sm node-type-btn" data-type="door">
+                            <span class="node-preview door"></span>
+                            Дверь
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Zoom Controls -->
+                <div class="control-group">
+                    <h3>Масштаб</h3>
+                    <div class="zoom-controls">
+                        <button class="btn btn--sm" id="zoomIn">🔍+ Приблизить</button>
+                        <button class="btn btn--sm" id="zoomOut">🔍- Отдалить</button>
+                        <button class="btn btn--sm" id="resetView">🎯 Сбросить</button>
+                    </div>
+                </div>
+
+                <!-- QR Scanner -->
+                <div class="control-group">
+                    <h3>Местоположение</h3>
+                    <button class="btn btn--primary" id="scanQR">📷 Сканировать QR</button>
+                    <div class="current-location" id="currentLocation" style="display: none;">
+                        <span class="status status--info">📍 Вы здесь: <span id="locationText"></span></span>
+                    </div>
+                </div>
+
+                <!-- Route Planning -->
+                <div class="control-group">
+                    <h3>Построение маршрута</h3>
+                    <div class="route-controls">
+                        <div class="form-group">
+                            <label class="form-label" for="startPoint">Откуда:</label>
+                            <select class="form-control" id="startPoint">
+                                <option value="">Выберите начальную точку</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="endPoint">Куда:</label>
+                            <select class="form-control" id="endPoint">
+                                <option value="">Выберите конечную точку</option>
+                            </select>
+                        </div>
+                        <button class="btn btn--primary btn--full-width" id="buildRoute">🗺️ Построить маршрут</button>
+                        <button class="btn btn--outline btn--full-width" id="clearRoute">❌ Очистить маршрут</button>
+                    </div>
+                </div>
+
+                <!-- Voice Navigation -->
+                <div class="control-group voice-nav-group" id="voiceNavGroup" style="display: none;">
+                    <h3>Голосовая навигация</h3>
+                    <div class="voice-controls">
+                        <button class="btn btn--primary" id="startVoiceNav">🔊 Начать навигацию</button>
+                        <button class="btn btn--outline" id="stopVoiceNav" style="display: none;">⏹️ Остановить</button>
+                        <div class="voice-step-controls" id="voiceStepControls" style="display: none;">
+                            <button class="btn btn--sm" id="prevStep">⬅️ Предыдущая</button>
+                            <button class="btn btn--sm" id="nextStep">➡️ Следующая</button>
+                        </div>
+                        <div class="current-instruction" id="currentInstruction"></div>
+                    </div>
+                </div>
+
+                <!-- Map Management -->
+                <div class="control-group">
+                    <h3>Управление картой</h3>
+                    <div class="map-management">
+                        <button class="btn btn--outline btn--full-width" id="saveMap">💾 Сохранить карту</button>
+                        <input type="file" id="loadMapInput" accept=".json" style="display: none;">
+                        <button class="btn btn--outline btn--full-width" id="loadMap">📂 Загрузить карту</button>
+                        <button class="btn btn--outline btn--full-width" id="clearAll">🗑️ Очистить всё</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="canvas-container" id="canvasContainer">
+                <canvas id="mapCanvas"></canvas>
+                
+                <!-- Floating Controls (Mobile) -->
+                <div class="floating-controls">
+                    <button class="floating-btn" id="floatingZoomIn" title="Приблизить">🔍+</button>
+                    <button class="floating-btn" id="floatingZoomOut" title="Отдалить">🔍-</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- QR Scanner Modal -->
+    <div class="modal" id="qrModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Сканирование QR-кода</h2>
+                <button class="modal-close" id="closeQR">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="qr-reader" class="qr-reader"></div>
+                <div class="qr-instructions">
+                    <p>Наведите камеру на QR-код для определения вашего местоположения</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Node Editor Modal -->
+    <div class="modal" id="nodeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Редактирование узла</h2>
+                <button class="modal-close" id="closeNodeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="nodeForm">
+                    <div class="form-group">
+                        <label class="form-label" for="nodeName">Название:</label>
+                        <input type="text" class="form-control" id="nodeName" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="nodeInfo">Описание:</label>
+                        <textarea class="form-control" id="nodeInfo" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="nodeQR">QR-код ID:</label>
+                        <input type="text" class="form-control" id="nodeQR">
+                    </div>
+                    <div class="modal-actions">
+                        <button type="submit" class="btn btn--primary">💾 Сохранить</button>
+                        <button type="button" class="btn btn--outline" id="cancelNodeEdit">❌ Отмена</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
