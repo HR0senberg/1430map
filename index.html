@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+    <!-- ==================== МЕТАДАННЫЕ ==================== -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Школа №1430 - Интерактивная навигация</title>
+    <title>Навигация 1430</title>
+    
+    <!-- ==================== СТИЛИ ==================== -->
     <link rel="stylesheet" href="style.css">
     
     <!-- Backup CDN for HTML5 QR Code -->
+    
+    <!-- ==================== РЕЗЕРВНАЯ ЗАГРУЗКА QR БИБЛИОТЕКИ ==================== -->
     <script>
         window.addEventListener('error', function(e) {
             if (e.target.src && e.target.src.includes('html5-qrcode')) {
@@ -20,11 +25,11 @@
     </script>
 </head>
 <body>
-    <!-- Header -->
+    <!-- ==================== HEADER (ШАПКА ПРИЛОЖЕНИЯ) ==================== -->
     <header class="header">
         <div class="header-content">
             <img src="image.png" alt="Логотип Школы №1430" class="school-logo">
-            <h1 class="header-title">Школа №1430 - Навигация</h1>
+            <h1 class="header-title">Навигация 1430</h1>
             <div class="header-center">
                 <div class="floor-controls">
                     <button class="floor-btn active" data-floor="1">Этаж 1</button>
@@ -46,9 +51,9 @@
         </div>
     </header>
 
-    <!-- Main Content -->
+    <!-- ==================== ОСНОВНОЙ КОНТЕНТ ==================== -->
     <main class="main-content">
-        <!-- Sidebar -->
+        <!-- ==================== БОКОВАЯ ПАНЕЛЬ (УПРАВЛЕНИЕ) ==================== -->
         <aside class="sidebar">
             <div class="sidebar-content">
                 <!-- Mode Controls -->
@@ -184,10 +189,16 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Documentation / README download -->
+                <div class="control-group">
+                    <h3>Документация</h3>
+                    <a class="map-btn" id="downloadReadme" href="#" download="README.txt">📄 Скачать README</a>
+                </div>
             </div>
         </aside>
 
-        <!-- Canvas Container -->
+        <!-- ==================== ХОЛСТ ДЛЯ ОТРИСОВКИ КАРТЫ ==================== -->
         <div class="canvas-container">
             <canvas id="mapCanvas" width="800" height="600"></canvas>
             <div class="canvas-info">
@@ -197,7 +208,7 @@
         </div>
     </main>
 
-    <!-- Modals -->
+    <!-- ==================== МОДАЛЬНЫЕ ОКНА ==================== -->
     <!-- QR Scanner Modal -->
     <div class="modal" id="qrModal">
         <div class="modal-content">
@@ -337,9 +348,10 @@
         </div>
     </div>
 
-    <!-- Notifications -->
+    <!-- ==================== СИСТЕМА УВЕДОМЛЕНИЙ ==================== -->
     <div class="notifications" id="notifications"></div>
 
+    <!-- ==================== ПОДКЛЮЧЕНИЕ БИБЛИОТЕК И СКРИПТОВ ==================== -->
     <!-- QR Scanner Library with backup -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js'; console.log('Switching to backup CDN for html5-qrcode');"></script>
     <script src="app.js"></script>
