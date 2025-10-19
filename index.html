@@ -41,6 +41,7 @@
                 <div class="quick-actions">
                     <button class="icon-btn" id="quickSave" title="Сохранить карту (Ctrl+S)">💾</button>
                     <button class="icon-btn" id="quickLoad" title="Загрузить карту (Ctrl+O)">📁</button>
+                    <button class="icon-btn" id="roleSwitch" title="Сменить роль">👤</button>
                 </div>
                 <button class="theme-toggle" title="Переключить тему">
                     <span class="theme-icon">🌙</span>
@@ -294,6 +295,47 @@
     <div class="loading-overlay" id="loadingOverlay" style="display:none;">
         <div class="spinner"></div>
         <p class="loading-text">Загрузка...</p>
+    </div>
+
+    <!-- Role Selection Modal -->
+    <div class="modal role-modal" id="roleModal">
+        <div class="modal-content role-modal-content">
+            <div class="modal-header">
+                <h2>Выберите свою роль</h2>
+            </div>
+            <div class="modal-body role-modal-body">
+                <div class="role-buttons">
+                    <button class="btn btn--primary btn--role" id="studentRole">
+                        <span class="role-icon">👨‍🎓</span>
+                        <span class="role-text">Я ученик</span>
+                    </button>
+                    <button class="btn btn--primary btn--role" id="adminRole">
+                        <span class="role-icon">🛡️</span>
+                        <span class="role-text">Я администратор</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Password Modal -->
+    <div class="modal" id="adminPasswordModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Вход администратора</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Введите пароль администратора</label>
+                    <input type="password" class="form-control" id="adminPasswordInput" placeholder="Введите пароль">
+                    <div class="password-error" id="adminPasswordError"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--secondary" id="cancelAdminPassword">Назад</button>
+                <button class="btn btn--primary" id="submitAdminPassword">Войти</button>
+            </div>
+        </div>
     </div>
 
     <!-- Notifications -->

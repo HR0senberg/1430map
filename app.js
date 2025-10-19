@@ -6,6 +6,8 @@ class SchoolNavigationApp {
     this.currentMode = 'view';
     this.currentNodeType = 'room';
     this.isAuthenticated = false;
+    this.userRole = null; // 'student' or 'admin'
+    this.isRoleSelected = false;
     this.currentTheme = 'light';
     this.scale = 1;
     this.panX = 0;
@@ -62,7 +64,9 @@ class SchoolNavigationApp {
       this.checkTheme();
       this.setupKeyboardShortcuts();
       this.hideLoading();
-      this.showNotification('Добро пожаловать в систему навигации Школы №1430!', 'info');
+      
+      // Show role selection modal on startup
+      this.showRoleSelectionModal();
     }, 1000);
   }
 
@@ -96,7 +100,7 @@ class SchoolNavigationApp {
 
     // Add floor button
     document.querySelector('.add-floor-btn').addEventListener('click', () => {
-      this.authenticateAction(() => this.addFloor());
+      this.addFloor();
     });
 
     // Theme toggle
@@ -187,17 +191,30 @@ class SchoolNavigationApp {
     });
 
     document.getElementById('loadMapFile').addEventListener('change', (e) => {
-      this.loadMap(e.target.files[0]);
+      const file = e.target.files[0];
+      if (file) {
+        this.loadMap(file);
+      }
     });
 
     document.getElementById('clearAll').addEventListener('click', () => {
-      this.authenticateAction(() => this.confirmAction('Очистить всю карту?', () => this.clearAll()));
+      this.confirmAction('Очистить всю карту?', () => this.clearAll());
     });
     
     // Floor plan upload events
     document.getElementById('floorPlanUpload').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
+        if (this.userRole !== 'admin' || !this.isAuthenticated) {
+          this.authenticateAction(() => {
+            this.showLoading('Загрузка изображения...');
+            setTimeout(() => {
+              this.loadFloorPlan(file);
+              this.hideLoading();
+            }, 500);
+          });
+          return;
+        }
         this.showLoading('Загрузка изображения...');
         setTimeout(() => {
           this.loadFloorPlan(file);
@@ -229,6 +246,9 @@ class SchoolNavigationApp {
 
     // Modal events
     this.setupModalEvents();
+    
+    // Role management events
+    this.setupRoleEvents();
   }
   
   setupKeyboardShortcuts() {
@@ -317,6 +337,38 @@ class SchoolNavigationApp {
     });
     
     // Voice settings are now handled by external event handlers script
+  }
+  
+  setupRoleEvents() {
+    // Role selection buttons
+    document.getElementById('studentRole').addEventListener('click', () => {
+      this.setUserRole('student');
+    });
+    
+    document.getElementById('adminRole').addEventListener('click', () => {
+      this.showAdminPasswordForm();
+    });
+    
+    // Role switch button in header
+    document.getElementById('roleSwitch').addEventListener('click', () => {
+      this.showRoleSelectionModal();
+    });
+    
+    // Admin password modal events
+    document.getElementById('submitAdminPassword').addEventListener('click', () => {
+      this.checkAdminPassword();
+    });
+    
+    document.getElementById('cancelAdminPassword').addEventListener('click', () => {
+      this.closeModal(document.getElementById('adminPasswordModal'));
+      this.showRoleSelectionModal();
+    });
+    
+    document.getElementById('adminPasswordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.checkAdminPassword();
+      }
+    });
   }
 
   setupVoiceSynthesis() {
@@ -604,32 +656,7 @@ class SchoolNavigationApp {
     this.updateFloorPlanInfo();
   }
 
-  setMode(mode) {
-    // Check authentication for protected modes
-    const protectedModes = ['add', 'edit', 'connect', 'delete', 'move'];
-    if (protectedModes.includes(mode) && !this.isAuthenticated) {
-      this.authenticateAction(() => this.setMode(mode));
-      return;
-    }
 
-    this.currentMode = mode;
-    
-    // Update UI
-    document.querySelectorAll('.mode-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.mode === mode);
-    });
-    
-    // Show/hide node type selector
-    const nodeTypeGroup = document.querySelector('.node-type-group');
-    nodeTypeGroup.style.display = mode === 'add' ? 'block' : 'none';
-    
-    // Clear selections
-    this.selectedNode = null;
-    this.connectingFromNode = null;
-    
-    // Update cursor - pan functionality is always available in view mode
-    this.canvas.style.cursor = mode === 'add' ? 'crosshair' : 'default';
-  }
 
   setNodeType(type) {
     this.currentNodeType = type;
@@ -787,6 +814,11 @@ class SchoolNavigationApp {
   }
 
   addFloor() {
+    if (this.userRole !== 'admin' || !this.isAuthenticated) {
+      this.authenticateAction(() => this.addFloor());
+      return;
+    }
+    
     const maxFloor = Math.max(...this.floors);
     const newFloor = maxFloor + 1;
     
@@ -1359,6 +1391,11 @@ class SchoolNavigationApp {
   }
 
   saveMap() {
+    if (this.userRole !== 'admin' || !this.isAuthenticated) {
+      this.authenticateAction(() => this.saveMap());
+      return;
+    }
+    
     this.showLoading('Сохранение карты...');
     
     setTimeout(() => {
@@ -1405,6 +1442,9 @@ class SchoolNavigationApp {
 
   loadMap(file) {
     if (!file) return;
+    
+    // For loading maps, allow both students and admins to view saved maps
+    // but only admins can save new maps
     
     this.showLoading('Загрузка карты...');
     
@@ -1485,6 +1525,7 @@ class SchoolNavigationApp {
       } catch (error) {
         this.hideLoading();
         this.showNotification('Ошибка при загрузке карты', 'error');
+        console.error('Map loading error:', error);
       }
     };
     
@@ -1492,6 +1533,11 @@ class SchoolNavigationApp {
   }
 
   clearAll() {
+    if (this.userRole !== 'admin' || !this.isAuthenticated) {
+      this.authenticateAction(() => this.clearAll());
+      return;
+    }
+    
     this.nodes.clear();
     this.connections = [];
     this.currentRoute = [];
@@ -1693,6 +1739,11 @@ class SchoolNavigationApp {
   
   // Floor background management methods
   loadFloorPlan(file) {
+    if (this.userRole !== 'admin' || !this.isAuthenticated) {
+      this.authenticateAction(() => this.loadFloorPlan(file));
+      return;
+    }
+    
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
@@ -1713,6 +1764,11 @@ class SchoolNavigationApp {
   }
   
   removeFloorPlan() {
+    if (this.userRole !== 'admin' || !this.isAuthenticated) {
+      this.authenticateAction(() => this.removeFloorPlan());
+      return;
+    }
+    
     this.floorBackgrounds.delete(this.currentFloor);
     this.showNotification('Схема удалена', 'info');
     this.updateFloorPlanInfo();
@@ -1951,6 +2007,131 @@ class SchoolNavigationApp {
     
     // Request next frame
     requestAnimationFrame(() => this.render());
+  }
+  
+  // Role Management Methods
+  showRoleSelectionModal() {
+    const roleModal = document.getElementById('roleModal');
+    this.openModal(roleModal);
+    
+    // Don't allow closing this modal without selecting a role
+    if (!this.isRoleSelected) {
+      // Disable backdrop click to close
+      roleModal.onclick = null;
+    }
+  }
+  
+  showAdminPasswordForm() {
+    this.closeModal(document.getElementById('roleModal'));
+    
+    // Clear previous input and errors
+    document.getElementById('adminPasswordInput').value = '';
+    document.getElementById('adminPasswordError').classList.remove('show');
+    
+    this.openModal(document.getElementById('adminPasswordModal'));
+    
+    // Focus on password input
+    setTimeout(() => {
+      document.getElementById('adminPasswordInput').focus();
+    }, 100);
+  }
+  
+  checkAdminPassword() {
+    const password = document.getElementById('adminPasswordInput').value;
+    const errorDiv = document.getElementById('adminPasswordError');
+    
+    if (password === '1430') {
+      this.setUserRole('admin');
+      this.isAuthenticated = true;
+      this.closeModal(document.getElementById('adminPasswordModal'));
+      this.showNotification('Вошли как администратор. Полный доступ к функциям редактирования.', 'success');
+    } else {
+      errorDiv.textContent = 'Неверный пароль, попробуйте ёщё раз';
+      errorDiv.classList.add('show');
+      document.getElementById('adminPasswordInput').focus();
+      document.getElementById('adminPasswordInput').select();
+    }
+  }
+  
+  setUserRole(role) {
+    this.userRole = role;
+    this.isRoleSelected = true;
+    
+    if (role === 'student') {
+      this.isAuthenticated = false;
+    }
+    
+    // Update UI based on role
+    document.body.setAttribute('data-user-role', role);
+    
+    // Close role modal
+    this.closeModal(document.getElementById('roleModal'));
+    
+    // Show appropriate welcome message
+    if (role === 'student') {
+      this.showNotification('Вошли как ученик. Доступен просмотр, QR-сканер, навигация и настройки голоса.', 'info');
+    }
+    
+    // Reset mode to view for students
+    if (role === 'student') {
+      this.setMode('view');
+    }
+    
+    // Show first time user guide
+    if (!this.isRoleSelected) {
+      setTimeout(() => {
+        this.showNotification('Добро пожаловать в систему навигации Школы №1430! Нажмите F1 для справки.', 'info');
+      }, 1000);
+    }
+  }
+  
+  // Role-based authenticateAction override
+  authenticateAction(callback) {
+    // Check if user has admin role and is authenticated
+    if (this.userRole === 'admin' && this.isAuthenticated) {
+      callback();
+      return;
+    }
+    
+    // For students, show access denied message
+    if (this.userRole === 'student') {
+      this.showNotification('Доступ запрещён. Модификация карты доступна только администраторам.', 'warning');
+      return;
+    }
+    
+    // For non-authenticated admins, show role selection
+    this.showRoleSelectionModal();
+  }
+  
+  // Role-based setMode override
+  setMode(mode) {
+    const protectedModes = ['add', 'edit', 'connect', 'delete', 'move'];
+    
+    // Check permissions for protected modes
+    if (protectedModes.includes(mode)) {
+      if (this.userRole !== 'admin' || !this.isAuthenticated) {
+        this.authenticateAction(() => this.setMode(mode));
+        return;
+      }
+    }
+
+    this.currentMode = mode;
+    
+    // Update UI
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    
+    // Show/hide node type selector
+    const nodeTypeGroup = document.querySelector('.node-type-group');
+    nodeTypeGroup.style.display = mode === 'add' ? 'block' : 'none';
+    
+    // Clear selections
+    this.selectedNode = null;
+    this.connectingFromNode = null;
+    
+    // Update cursor - pan functionality is always available in view mode
+    this.canvas.style.cursor = mode === 'add' ? 'crosshair' : 'default';
   }
 }
 

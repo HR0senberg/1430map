@@ -1892,6 +1892,144 @@ textarea.form-control {
   }
 }
 
+/* Role Selection Modal Styles */
+.role-modal .modal-content {
+  max-width: 600px;
+  width: 90%;
+}
+
+.role-modal-body {
+  padding: var(--space-32) var(--space-16);
+  text-align: center;
+}
+
+.role-buttons {
+  display: flex;
+  gap: var(--space-24);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn--role {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-24) var(--space-32);
+  min-width: 200px;
+  min-height: 120px;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  transition: all var(--duration-normal) var(--ease-standard);
+  box-shadow: var(--shadow-md);
+}
+
+.btn--role:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.role-icon {
+  font-size: var(--font-size-4xl);
+  margin-bottom: var(--space-12);
+  display: block;
+}
+
+.role-text {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Role selection modal backdrop - always show */
+.role-modal {
+  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.7);
+}
+
+/* Role switch button in header */
+#roleSwitch {
+  background: var(--color-bg-5);
+  border: 1px solid var(--color-border);
+}
+
+#roleSwitch:hover {
+  background: var(--color-secondary-hover);
+  border-color: var(--color-primary);
+}
+
+/* Admin elements visibility */
+.admin-only {
+  display: none;
+}
+
+[data-user-role="admin"] .admin-only {
+  display: block;
+}
+
+[data-user-role="admin"] .mode-btn[data-mode="add"],
+[data-user-role="admin"] .mode-btn[data-mode="edit"],
+[data-user-role="admin"] .mode-btn[data-mode="connect"],
+[data-user-role="admin"] .mode-btn[data-mode="delete"],
+[data-user-role="admin"] .mode-btn[data-mode="move"],
+[data-user-role="admin"] .add-floor-btn,
+[data-user-role="admin"] .map-controls,
+[data-user-role="admin"] #floorPlanUpload,
+[data-user-role="admin"] #removeFloorPlan,
+[data-user-role="admin"] #bgOpacity,
+[data-user-role="admin"] #quickSave,
+[data-user-role="admin"] #quickLoad {
+  display: flex;
+}
+
+[data-user-role="admin"] .mode-buttons .mode-btn[data-mode="add"],
+[data-user-role="admin"] .mode-buttons .mode-btn[data-mode="edit"],
+[data-user-role="admin"] .mode-buttons .mode-btn[data-mode="connect"],
+[data-user-role="admin"] .mode-buttons .mode-btn[data-mode="delete"],
+[data-user-role="admin"] .mode-buttons .mode-btn[data-mode="move"] {
+  display: flex;
+}
+
+/* Student mode - hide admin functions */
+[data-user-role="student"] .mode-btn[data-mode="add"],
+[data-user-role="student"] .mode-btn[data-mode="edit"],
+[data-user-role="student"] .mode-btn[data-mode="connect"],
+[data-user-role="student"] .mode-btn[data-mode="delete"],
+[data-user-role="student"] .mode-btn[data-mode="move"],
+[data-user-role="student"] .add-floor-btn,
+[data-user-role="student"] .map-controls,
+[data-user-role="student"] #quickSave,
+[data-user-role="student"] #quickLoad {
+  display: none !important;
+}
+
+[data-user-role="student"] .node-type-group {
+  display: none !important;
+}
+
+/* Mobile adjustments for role modal */
+@media (max-width: 768px) {
+  .role-buttons {
+    flex-direction: column;
+    gap: var(--space-16);
+  }
+  
+  .btn--role {
+    min-width: 100%;
+    min-height: 80px;
+    padding: var(--space-16);
+  }
+  
+  .role-icon {
+    font-size: var(--font-size-3xl);
+    margin-bottom: var(--space-8);
+  }
+  
+  .role-text {
+    font-size: var(--font-size-lg);
+  }
+}
+
 /* Hide scrollbars for webkit browsers */
 .sidebar::-webkit-scrollbar {
   width: 6px;
