@@ -8,7 +8,6 @@ class SchoolNavigationApp {
     this.isAuthenticated = false;
     this.userRole = null; // 'student' or 'admin'
     this.isRoleSelected = false;
-    this.currentTheme = 'light';
     this.scale = 1;
     this.panX = 0;
     this.panY = 0;
@@ -36,12 +35,28 @@ class SchoolNavigationApp {
     
     // Enhanced voice settings
     this.voiceSettings = { rate: 0.9, pitch: 1.0, volume: 1.0 };
-    this.showSubtitles = true;
+    this.voiceInstructions = [];
+    this.showSubtitles = true; // Always enabled
     this.qrRetryCount = 0;
     this.maxQrRetries = 3;
     this.html5QrcodeScanner = null;
     this.voices = [];
     this.selectedVoice = null;
+    
+    // Distance calculation settings
+    this.scaleRatio = 5; // pixels per meter
+    this.stepInterval = 10; // meters between step markers
+    this.routeDistance = 0;
+    this.segmentColors = {
+      short: '#2ecc71',  // <10m зелёный
+      medium: '#f39c12', // 10-25m жёлтый
+      long: '#e67e22'   // >25m оранжевый
+    };
+    
+    // Mouse position for tooltips
+    this.mouseX = 0;
+    this.mouseY = 0;
+    this.hoveredSegment = null;
     
     // Default school data
     this.nodes = new Map();
@@ -61,7 +76,6 @@ class SchoolNavigationApp {
       this.loadDefaultData();
       this.updateFloorSelectors();
       this.render();
-      this.checkTheme();
       this.setupKeyboardShortcuts();
       this.hideLoading();
       
@@ -103,10 +117,7 @@ class SchoolNavigationApp {
       this.addFloor();
     });
 
-    // Theme toggle
-    document.querySelector('.theme-toggle').addEventListener('click', () => {
-      this.toggleTheme();
-    });
+
 
     // Menu toggle (mobile)
     document.querySelector('.menu-toggle').addEventListener('click', () => {
@@ -170,6 +181,20 @@ class SchoolNavigationApp {
 
     document.getElementById('repeatInstruction').addEventListener('click', () => {
       this.repeatInstruction();
+    });
+    
+    // Scale ratio control
+    document.getElementById('scaleRatio').addEventListener('input', (e) => {
+      this.scaleRatio = parseFloat(e.target.value);
+      const metersSpan = document.getElementById('scaleMeters');
+      if (metersSpan) {
+        metersSpan.textContent = Math.round((50 / (this.scaleRatio * 10)) * 10);
+      }
+      // Recalculate route distance if route exists
+      if (this.currentRoute.length > 0) {
+        this.routeDistance = this.calculatePathDistance(this.currentRoute);
+        this.updateDistanceDisplay(this.routeDistance);
+      }
     });
 
     // Map management
@@ -235,7 +260,10 @@ class SchoolNavigationApp {
 
     // Canvas events
     this.canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
-    this.canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+    this.canvas.addEventListener('mousemove', (e) => {
+      this.handleCanvasMouseMove(e);
+      this.handleCanvasHover(e);
+    });
     this.canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
     this.canvas.addEventListener('wheel', (e) => this.handleCanvasWheel(e));
 
@@ -569,6 +597,73 @@ class SchoolNavigationApp {
       this.selectedNode = null;
     }
   }
+  
+  handleCanvasHover(e) {
+    const coords = this.getCanvasCoordinates(e.clientX, e.clientY);
+    this.mouseX = coords.x;
+    this.mouseY = coords.y;
+    
+    // Check if hovering over a route segment
+    this.hoveredSegment = null;
+    
+    if (this.currentRoute.length > 1) {
+      for (let i = 0; i < this.currentRoute.length - 1; i++) {
+        const node1 = this.nodes.get(this.currentRoute[i]);
+        const node2 = this.nodes.get(this.currentRoute[i + 1]);
+        
+        if (node1 && node2 && node1.floor === this.currentFloor && node2.floor === this.currentFloor) {
+          const distance = this.distanceToLineSegment(coords.x, coords.y, node1.x, node1.y, node2.x, node2.y);
+          
+          if (distance < 10) { // Within 10 pixels of the line
+            const segmentDistance = this.calculateDistance(node1, node2);
+            this.hoveredSegment = {
+              distance: segmentDistance,
+              x: coords.x,
+              y: coords.y
+            };
+            this.canvas.style.cursor = 'pointer';
+            break;
+          }
+        }
+      }
+      
+      if (!this.hoveredSegment && this.currentMode === 'view') {
+        this.canvas.style.cursor = 'grab';
+      }
+    }
+  }
+  
+  distanceToLineSegment(px, py, x1, y1, x2, y2) {
+    const A = px - x1;
+    const B = py - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+    
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    
+    if (lenSq !== 0) {
+      param = dot / lenSq;
+    }
+    
+    let xx, yy;
+    
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+    
+    const dx = px - xx;
+    const dy = py - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
 
   handleCanvasWheel(e) {
     e.preventDefault();
@@ -894,7 +989,9 @@ class SchoolNavigationApp {
     if (route.length > 0) {
       this.currentRoute = route;
       this.currentRouteIndex = 0;
-      this.showNotification(`Маршрут построен (${route.length} точек)`, 'success');
+      this.routeDistance = this.calculatePathDistance(route);
+      this.updateDistanceDisplay(this.routeDistance);
+      this.showNotification(`Маршрут построен (${route.length} точек, ${this.routeDistance} м)`, 'success');
     } else {
       this.showNotification('Маршрут не найден', 'error');
     }
@@ -904,6 +1001,8 @@ class SchoolNavigationApp {
     this.currentRoute = [];
     this.currentRouteIndex = 0;
     this.isNavigating = false;
+    this.routeDistance = 0;
+    this.updateDistanceDisplay(0);
     document.getElementById('currentInstruction').textContent = '';
     this.showNotification('Маршрут очищен', 'info');
   }
@@ -978,60 +1077,90 @@ class SchoolNavigationApp {
     
     return neighbors;
   }
+  
+  // Distance calculation methods
+  calculateDistance(node1, node2) {
+    // Euclidean distance in pixels
+    const dx = node2.x - node1.x;
+    const dy = node2.y - node1.y;
+    const pixels = Math.sqrt(dx * dx + dy * dy);
+    // Convert to meters: configurable scale ratio
+    const meters = (pixels / (this.scaleRatio * 10)) * 10;
+    return Math.round(meters);
+  }
+  
+  calculatePathDistance(path) {
+    let total = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const n1 = this.nodes.get(path[i]);
+      const n2 = this.nodes.get(path[i + 1]);
+      if (n1 && n2) {
+        total += this.calculateDistance(n1, n2);
+      }
+    }
+    return total;
+  }
+  
+  getSegmentColor(distance) {
+    if (distance < 10) return this.segmentColors.short;
+    if (distance <= 25) return this.segmentColors.medium;
+    return this.segmentColors.long;
+  }
+  
+  updateDistanceDisplay(distance) {
+    const distanceElement = document.getElementById('routeDistance');
+    const distanceValue = document.getElementById('distanceValue');
+    
+    if (distance > 0) {
+      distanceValue.textContent = distance;
+      distanceElement.style.display = 'block';
+    } else {
+      distanceElement.style.display = 'none';
+    }
+  }
 
   generateVoiceInstructions() {
     if (this.currentRoute.length < 2) return [];
     
-    const instructions = [];
+    this.voiceInstructions = [];
     
-    // Start instruction
-    const startNode = this.nodes.get(this.currentRoute[0]);
-    instructions.push(`Начинаем движение от ${startNode.name}`);
-    
-    for (let i = 0; i < this.currentRoute.length - 1; i++) {
-      const currentNode = this.nodes.get(this.currentRoute[i]);
-      const nextNode = this.nodes.get(this.currentRoute[i + 1]);
-      const futureNode = i + 2 < this.currentRoute.length ? this.nodes.get(this.currentRoute[i + 2]) : null;
+    for (let i = 0; i < this.currentRoute.length; i++) {
+      const current = this.nodes.get(this.currentRoute[i]);
+      const next = i < this.currentRoute.length - 1 ? this.nodes.get(this.currentRoute[i + 1]) : null;
       
-      if (i > 0) { // Skip first instruction as it's the start
-        if (currentNode.floor !== nextNode.floor) {
-          // Floor change via stairs
-          if (currentNode.type === 'stair' || nextNode.type === 'stair') {
-            const stairNode = currentNode.type === 'stair' ? currentNode : nextNode;
-            if (nextNode.floor > currentNode.floor) {
-              instructions.push(`Поднимитесь по ${stairNode.name} на ${nextNode.floor} этаж`);
-            } else {
-              instructions.push(`Спуститесь по ${stairNode.name} на ${nextNode.floor} этаж`);
-            }
-          }
-        } else {
-          // Enhanced contextual instructions for same floor movement
-          if (currentNode.type === 'corridor') {
-            instructions.push(`Двигайтесь по коридору до ${nextNode.name}`);
-          } else if (nextNode.type === 'corridor') {
-            if (futureNode) {
-              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${futureNode.name}`);
-            } else {
-              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
-            }
-          } else if (nextNode.type === 'exit') {
-            instructions.push(`Направляйтесь к ${nextNode.name}`);
-          } else {
-            if (futureNode) {
-              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${futureNode.name}`);
-            } else {
-              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
-            }
-          }
+      if (i === 0) {
+        const totalDist = this.calculatePathDistance(this.currentRoute);
+        this.voiceInstructions.push(
+          `Начинаем движение от ${current.name}. Общая длина маршрута ${totalDist} метров`
+        );
+        continue;
+      }
+      
+      if (next) {
+        const dist = this.calculateDistance(current, next);
+        
+        if (current.type === 'stair') {
+          const dir = next.floor > current.floor ? 'Поднимитесь' : 'Спуститесь';
+          this.voiceInstructions.push(
+            `${dir} по ${current.name} на ${next.floor} этаж`
+          );
+        } else if (current.type === 'corridor') {
+          this.voiceInstructions.push(
+            `Двигайтесь по коридору ${dist} метров до ${next.name}`
+          );
+        } else if (current.type === 'room') {
+          this.voiceInstructions.push(
+            `Пройдите мимо ${current.name}, через ${dist} метров направляйтесь к ${next.name}`
+          );
         }
+      } else {
+        this.voiceInstructions.push(
+          `Вы прибыли в пункт назначения: ${current.name}`
+        );
       }
     }
     
-    // End instruction
-    const endNode = this.nodes.get(this.currentRoute[this.currentRoute.length - 1]);
-    instructions.push(`Вы прибыли в пункт назначения: ${endNode.name}`);
-    
-    return instructions;
+    return this.voiceInstructions;
   }
 
   startNavigation() {
@@ -1171,17 +1300,7 @@ class SchoolNavigationApp {
     }
   }
 
-  toggleSubtitles() {
-    this.showSubtitles = !this.showSubtitles;
-    const statusElement = document.getElementById('subtitleStatus');
-    if (statusElement) {
-      statusElement.textContent = this.showSubtitles ? 'Вкл' : 'Выкл';
-    }
-    this.showNotification(
-      `Субтитры ${this.showSubtitles ? 'включены' : 'выключены'}`, 
-      'info'
-    );
-  }
+
 
   retryQRScanner() {
     this.qrRetryCount++;
@@ -1417,7 +1536,9 @@ class SchoolNavigationApp {
           floors: this.floors,
           backgrounds: backgroundsData,
           backgroundOpacity: this.backgroundOpacity,
-          version: '2.0',
+          scaleRatio: this.scaleRatio,
+          stepInterval: this.stepInterval,
+          version: '3.0',
           timestamp: new Date().toISOString()
         };
         
@@ -1483,6 +1604,20 @@ class SchoolNavigationApp {
           document.getElementById('bgOpacityValue').textContent = Math.round(this.backgroundOpacity * 100);
         }
         
+        // Load distance settings
+        if (mapData.scaleRatio !== undefined) {
+          this.scaleRatio = mapData.scaleRatio;
+          document.getElementById('scaleRatio').value = this.scaleRatio;
+          const metersSpan = document.getElementById('scaleMeters');
+          if (metersSpan) {
+            metersSpan.textContent = Math.round((50 / (this.scaleRatio * 10)) * 10);
+          }
+        }
+        
+        if (mapData.stepInterval !== undefined) {
+          this.stepInterval = mapData.stepInterval;
+        }
+        
         // Load backgrounds (new format)
         const backgrounds = mapData.backgrounds || mapData.floorBackgrounds;
         if (backgrounds) {
@@ -1545,35 +1680,33 @@ class SchoolNavigationApp {
     this.isNavigating = false;
     this.currentLocation = null;
     this.floorBackgrounds.clear();
+    this.routeDistance = 0;
+    this.hoveredSegment = null;
+    
+    // Reset distance settings to defaults
+    this.scaleRatio = 5;
+    this.stepInterval = 10;
+    document.getElementById('scaleRatio').value = 5;
+    const metersSpan = document.getElementById('scaleMeters');
+    if (metersSpan) {
+      metersSpan.textContent = '10';
+    }
     
     this.updateRouteSelectors();
     this.updateFloorPlanInfo();
+    this.updateDistanceDisplay(0);
     document.getElementById('currentInstruction').textContent = '';
+    
+    // Remove any tooltips
+    const tooltip = document.getElementById('routeTooltip');
+    if (tooltip) {
+      tooltip.remove();
+    }
+    
     this.showNotification('Карта очищена', 'info');
   }
 
-  toggleTheme() {
-    this.currentTheme = this.currentTheme === 'light' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', this.currentTheme);
-    
-    const themeIcon = document.querySelector('.theme-icon');
-    themeIcon.textContent = this.currentTheme === 'light' ? '🌙' : '☀️';
-    
-    this.showNotification(`Тема: ${this.currentTheme === 'light' ? 'Светлая' : 'Темная'}`, 'info');
-  }
 
-  checkTheme() {
-    // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      this.currentTheme = 'dark';
-    } else {
-      this.currentTheme = 'light';
-    }
-    
-    document.documentElement.setAttribute('data-theme', this.currentTheme);
-    const themeIcon = document.querySelector('.theme-icon');
-    themeIcon.textContent = this.currentTheme === 'light' ? '🌙' : '☀️';
-  }
 
   authenticateAction(callback) {
     if (this.isAuthenticated) {
@@ -1897,25 +2030,33 @@ class SchoolNavigationApp {
     if (this.currentRoute.length < 2) return;
     
     this.ctx.save();
-    this.ctx.strokeStyle = '#f39c12';
-    this.ctx.lineWidth = 4;
+    this.ctx.lineWidth = 6;
     this.ctx.lineCap = 'round';
-    this.ctx.setLineDash([10, 5]);
+    this.ctx.setLineDash([]);
     
+    // Draw colored route segments
     for (let i = 0; i < this.currentRoute.length - 1; i++) {
       const currentNode = this.nodes.get(this.currentRoute[i]);
       const nextNode = this.nodes.get(this.currentRoute[i + 1]);
       
-      if (currentNode && nextNode && currentNode.floor === this.currentFloor) {
+      if (currentNode && nextNode && currentNode.floor === this.currentFloor && nextNode.floor === this.currentFloor) {
+        const distance = this.calculateDistance(currentNode, nextNode);
+        const color = this.getSegmentColor(distance);
+        
+        this.ctx.strokeStyle = color;
         this.ctx.beginPath();
         this.ctx.moveTo(currentNode.x, currentNode.y);
-        
-        if (nextNode.floor === this.currentFloor) {
-          this.ctx.lineTo(nextNode.x, nextNode.y);
-        }
-        
+        this.ctx.lineTo(nextNode.x, nextNode.y);
         this.ctx.stroke();
+        
+        // Draw step markers
+        this.drawStepMarkers(currentNode, nextNode, distance);
       }
+    }
+    
+    // Draw tooltip if hovering over segment
+    if (this.hoveredSegment) {
+      this.drawTooltip(this.hoveredSegment.x, this.hoveredSegment.y, `Сегмент: ${this.hoveredSegment.distance} м`);
     }
     
     // Highlight current position during navigation
@@ -1960,6 +2101,81 @@ class SchoolNavigationApp {
     }
     
     this.ctx.restore();
+  }
+  
+  drawStepMarkers(node1, node2, distance) {
+    const steps = Math.floor(distance / this.stepInterval);
+    if (steps <= 0) return;
+    
+    const dx = node2.x - node1.x;
+    const dy = node2.y - node1.y;
+    const totalLength = Math.sqrt(dx * dx + dy * dy);
+    
+    for (let step = 1; step <= steps; step++) {
+      const ratio = (step * this.stepInterval) / distance;
+      if (ratio >= 1) break;
+      
+      const x = node1.x + dx * ratio;
+      const y = node1.y + dy * ratio;
+      
+      // Draw step marker circle
+      this.ctx.fillStyle = 'white';
+      this.ctx.strokeStyle = '#333';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, 7, 0, 2 * Math.PI);
+      this.ctx.fill();
+      this.ctx.stroke();
+      
+      // Draw step number
+      this.ctx.fillStyle = '#333';
+      this.ctx.font = 'bold 11px sans-serif';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(step.toString(), x, y);
+    }
+  }
+  
+  drawTooltip(x, y, text) {
+    // Convert canvas coordinates to screen coordinates
+    const rect = this.canvas.getBoundingClientRect();
+    const screenX = (x * this.scale + this.panX) + rect.left;
+    const screenY = (y * this.scale + this.panY) + rect.top;
+    
+    // Remove existing tooltip
+    const existingTooltip = document.getElementById('routeTooltip');
+    if (existingTooltip) {
+      existingTooltip.remove();
+    }
+    
+    // Create new tooltip
+    const tooltip = document.createElement('div');
+    tooltip.id = 'routeTooltip';
+    tooltip.textContent = text;
+    tooltip.style.cssText = `
+      position: fixed;
+      left: ${screenX + 10}px;
+      top: ${screenY - 30}px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      pointer-events: none;
+      z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    `;
+    
+    document.body.appendChild(tooltip);
+    
+    // Remove tooltip after delay
+    setTimeout(() => {
+      const tooltipElement = document.getElementById('routeTooltip');
+      if (tooltipElement) {
+        tooltipElement.remove();
+      }
+    }, 3000);
   }
 
   render() {

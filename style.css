@@ -888,48 +888,7 @@ select.form-control {
   --sidebar-width: 280px;
 }
 
-/* Dark mode colors */
-[data-theme="dark"] {
-  --color-background: var(--color-charcoal-700);
-  --color-surface: var(--color-charcoal-800);
-  --color-text: var(--color-gray-200);
-  --color-text-secondary: rgba(167, 169, 169, 0.7);
-  --color-primary: var(--color-teal-300);
-  --color-primary-hover: var(--color-teal-400);
-  --color-primary-active: var(--color-teal-800);
-  --color-secondary: rgba(119, 124, 124, 0.15);
-  --color-secondary-hover: rgba(119, 124, 124, 0.25);
-  --color-secondary-active: rgba(119, 124, 124, 0.3);
-  --color-border: rgba(119, 124, 124, 0.3);
-  --color-error: var(--color-red-400);
-  --color-success: var(--color-teal-300);
-  --color-warning: var(--color-orange-400);
-  --color-info: var(--color-gray-300);
-  --color-focus-ring: rgba(50, 184, 198, 0.4);
-  --color-btn-primary-text: var(--color-slate-900);
-  --color-card-border: rgba(119, 124, 124, 0.2);
-  --color-card-border-inner: rgba(119, 124, 124, 0.15);
-  --shadow-inset-sm: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.15);
-  --color-canvas: #1a1c1c;
-  --color-school-secondary: #32b8c6;
-}
 
-/* Dark theme overrides for voice settings */
-[data-theme="dark"] .voice-slider {
-  background: var(--color-slate-900);
-}
-
-[data-theme="dark"] .voice-slider::-webkit-slider-thumb {
-  background: var(--color-teal-300);
-}
-
-[data-theme="dark"] .voice-slider::-moz-range-thumb {
-  background: var(--color-teal-300);
-}
-
-[data-theme="dark"] #subtitleStatus {
-  color: var(--color-teal-300);
-}
 
 /* Base styles */
 html {
@@ -1084,20 +1043,18 @@ textarea.form-control {
   height: 100%;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-16);
-}
-
-.logo {
-  font-size: var(--font-size-3xl);
+.school-logo {
+  height: 50px;
+  width: auto;
+  margin-right: 15px;
+  vertical-align: middle;
 }
 
 .header-title {
   font-size: var(--font-size-xl);
   color: var(--color-school-primary);
   margin: 0;
+  margin-left: 15px;
 }
 
 .header-center {
@@ -1190,24 +1147,7 @@ textarea.form-control {
   transform: scale(0.95);
 }
 
-.theme-toggle {
-  padding: var(--space-8);
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: var(--font-size-xl);
-  border-radius: var(--radius-base);
-  transition: background-color var(--duration-fast) var(--ease-standard);
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
-.theme-toggle:hover {
-  background: var(--color-secondary);
-}
 
 .menu-toggle {
   display: none;
@@ -1749,18 +1689,7 @@ textarea.form-control {
   }
 }
 
-/* Dark theme for quick actions */
-[data-theme="dark"] .spinner {
-  border-top-color: var(--color-teal-300);
-}
 
-[data-theme="dark"] .icon-btn {
-  background: var(--color-secondary);
-}
-
-[data-theme="dark"] .icon-btn:hover {
-  background: var(--color-secondary-hover);
-}
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
@@ -1844,12 +1773,11 @@ textarea.form-control {
     padding: 0 var(--space-8);
   }
   
-  .header-left {
-    gap: var(--space-8);
-  }
+
   
-  .logo {
-    font-size: var(--font-size-2xl);
+  .school-logo {
+    height: 40px;
+    margin-right: 10px;
   }
   
   .header-title {
