@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Школа №1430 - Интерактивная навигация</title>
     <link rel="stylesheet" href="style.css">
+    
+    <!-- Backup CDN for HTML5 QR Code -->
+    <script>
+        window.addEventListener('error', function(e) {
+            if (e.target.src && e.target.src.includes('html5-qrcode')) {
+                console.warn('Primary CDN failed, loading backup...');
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                script.crossOrigin = 'anonymous';
+                document.head.appendChild(script);
+            }
+        }, true);
+    </script>
 </head>
 <body>
     <!-- Header -->
@@ -45,7 +58,6 @@
                     <h3>Режим</h3>
                     <div class="mode-buttons">
                         <button class="mode-btn active" data-mode="view">Просмотр</button>
-                        <button class="mode-btn" data-mode="pan">Панорама</button>
                         <button class="mode-btn" data-mode="add">Добавить</button>
                         <button class="mode-btn" data-mode="edit">Редактировать</button>
                         <button class="mode-btn" data-mode="connect">Соединить</button>
@@ -110,25 +122,31 @@
                 </div>
 
                 <!-- Voice Settings -->
-                <div class="control-group voice-settings">
+                <div class="control-group">
                     <h3>⚙️ Настройки голоса</h3>
-                    <div class="form-group">
-                        <label class="form-label">Голос</label>
-                        <select class="form-control" id="voiceSelect">
-                            <option value="">Выберите голос</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Скорость: <span id="rateValue">0.9</span>x</label>
-                        <input type="range" class="voice-slider" id="rateSlider" min="0.5" max="2.0" step="0.1" value="0.9">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Тон: <span id="pitchValue">1.0</span></label>
-                        <input type="range" class="voice-slider" id="pitchSlider" min="0.5" max="2.0" step="0.1" value="1.0">
-                    </div>
-                    <div class="form-group">
-                        <button class="voice-btn" id="subtitleToggle">
-                            Субтитры: <span id="subtitleStatus">Вкл</span>
+                    <div class="voice-settings">
+                        <div class="form-group">
+                            <label class="form-label" for="voiceSelect">Выбор голоса</label>
+                            <select class="form-control" id="voiceSelect">
+                                <option value="">Загрузка голосов...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="voiceRate">
+                                Скорость: <span id="rateValue">0.9</span>x
+                            </label>
+                            <input type="range" class="voice-slider" id="voiceRate" 
+                                   min="0.5" max="2.0" step="0.1" value="0.9">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="voicePitch">
+                                Тон: <span id="pitchValue">1.0</span>
+                            </label>
+                            <input type="range" class="voice-slider" id="voicePitch" 
+                                   min="0.5" max="2.0" step="0.1" value="1.0">
+                        </div>
+                        <button class="btn btn--outline btn--full-width" id="toggleSubtitles">
+                            📝 Субтитры: <span id="subtitleStatus">Вкл</span>
                         </button>
                     </div>
                 </div>
@@ -141,6 +159,18 @@
                         <input type="file" id="loadMapFile" accept=".json" style="display: none;">
                         <button class="map-btn" id="loadMap">Загрузить карту</button>
                         <button class="map-btn" id="clearAll">Очистить все</button>
+                        
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label class="form-label">Фоновая схема этажа</label>
+                            <input type="file" id="floorPlanUpload" accept="image/*" style="display:none">
+                            <button class="btn btn--outline btn--full-width" onclick="document.getElementById('floorPlanUpload').click()">
+                                📁 Загрузить схему
+                            </button>
+                            <div id="floorPlanInfo" style="font-size:12px;margin-top:4px;color:var(--color-text-secondary);"></div>
+                            <button class="btn btn--outline btn--full-width" id="removeFloorPlan" style="margin-top:8px;display:none;">
+                                🗑️ Удалить схему
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -255,5 +285,62 @@
     <!-- QR Scanner Library with backup -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null; this.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js'; console.log('Switching to backup CDN for html5-qrcode');"></script>
     <script src="app.js"></script>
+    
+    <!-- Enhanced Voice Settings Event Handlers -->
+    <script>
+        window.addEventListener('load', function() {
+            const app = window.app;
+            if (!app) return;
+            
+            const voiceSelect = document.getElementById('voiceSelect');
+            const voiceRate = document.getElementById('voiceRate');
+            const voicePitch = document.getElementById('voicePitch');
+            const toggleSubtitles = document.getElementById('toggleSubtitles');
+            
+            const updateVoiceSelect = () => {
+                if (app.voices && app.voices.length) {
+                    voiceSelect.innerHTML = '';
+                    app.voices.forEach((voice, i) => {
+                        const opt = document.createElement('option');
+                        opt.value = i;
+                        opt.textContent = voice.name + ' (' + voice.lang + ')';
+                        if (app.selectedVoice && voice.name === app.selectedVoice.name) {
+                            opt.selected = true;
+                        }
+                        voiceSelect.appendChild(opt);
+                    });
+                }
+            };
+            
+            setTimeout(updateVoiceSelect, 500);
+            if (window.speechSynthesis) {
+                window.speechSynthesis.addEventListener('voiceschanged', updateVoiceSelect);
+            }
+            
+            if (voiceSelect) {
+                voiceSelect.addEventListener('change', e => app.selectVoice(+e.target.value));
+            }
+            if (voiceRate) {
+                voiceRate.addEventListener('input', e => {
+                    const r = +e.target.value;
+                    app.setVoiceRate(r);
+                    document.getElementById('rateValue').textContent = r.toFixed(1);
+                });
+            }
+            if (voicePitch) {
+                voicePitch.addEventListener('input', e => {
+                    const p = +e.target.value;
+                    app.setVoicePitch(p);
+                    document.getElementById('pitchValue').textContent = p.toFixed(1);
+                });
+            }
+            if (toggleSubtitles) {
+                toggleSubtitles.addEventListener('click', () => {
+                    app.toggleSubtitles();
+                    document.getElementById('subtitleStatus').textContent = app.showSubtitles ? 'Вкл' : 'Выкл';
+                });
+            }
+        });
+    </script>
 </body>
 </html>

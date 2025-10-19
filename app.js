@@ -24,18 +24,18 @@ class SchoolNavigationApp {
     this.qrStream = null;
     this.floors = [1, 2, 3];
     
-    // Voice settings
-    this.voiceSettings = {
-      rate: 0.9,
-      pitch: 1.0,
-      volume: 1.0,
-      showSubtitles: true
-    };
+    // Floor background management
+    this.floorBackgrounds = new Map();
+    this.backgroundOpacity = 0.3;
     
-    // QR Scanner settings
+    // Enhanced voice settings
+    this.voiceSettings = { rate: 0.9, pitch: 1.0, volume: 1.0 };
+    this.showSubtitles = true;
     this.qrRetryCount = 0;
     this.maxQrRetries = 3;
     this.html5QrcodeScanner = null;
+    this.voices = [];
+    this.selectedVoice = null;
     
     // Default school data
     this.nodes = new Map();
@@ -174,6 +174,18 @@ class SchoolNavigationApp {
     document.getElementById('clearAll').addEventListener('click', () => {
       this.authenticateAction(() => this.confirmAction('Очистить всю карту?', () => this.clearAll()));
     });
+    
+    // Floor plan upload events
+    document.getElementById('floorPlanUpload').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        this.loadFloorPlan(file);
+      }
+    });
+    
+    document.getElementById('removeFloorPlan').addEventListener('click', () => {
+      this.removeFloorPlan();
+    });
 
     // Canvas events
     this.canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
@@ -255,22 +267,7 @@ class SchoolNavigationApp {
       this.retryQRScanner();
     });
     
-    // Voice settings controls
-    document.getElementById('voiceSelect').addEventListener('change', (e) => {
-      this.selectVoice(e.target.value);
-    });
-    
-    document.getElementById('rateSlider').addEventListener('input', (e) => {
-      this.setVoiceRate(parseFloat(e.target.value));
-    });
-    
-    document.getElementById('pitchSlider').addEventListener('input', (e) => {
-      this.setVoicePitch(parseFloat(e.target.value));
-    });
-    
-    document.getElementById('subtitleToggle').addEventListener('click', () => {
-      this.toggleSubtitles();
-    });
+    // Voice settings are now handled by external event handlers script
   }
 
   setupVoiceSynthesis() {
@@ -279,13 +276,13 @@ class SchoolNavigationApp {
       
       // Wait for voices to load
       const loadVoices = () => {
-        const voices = this.speechSynthesis.getVoices();
-        this.currentVoice = voices.find(voice => 
+        this.voices = this.speechSynthesis.getVoices();
+        this.selectedVoice = this.voices.find(voice => 
           voice.lang.includes('ru') || voice.name.includes('Russian')
-        ) || voices[0];
+        ) || this.voices[0];
         
         // Populate voice selector
-        this.populateVoiceSelector(voices);
+        this.populateVoiceSelector(this.voices);
       };
       
       if (this.speechSynthesis.getVoices().length === 0) {
@@ -298,13 +295,15 @@ class SchoolNavigationApp {
 
   populateVoiceSelector(voices) {
     const voiceSelect = document.getElementById('voiceSelect');
+    if (!voiceSelect) return;
+    
     voiceSelect.innerHTML = '<option value="">Системный по умолчанию</option>';
     
     voices.forEach((voice, index) => {
       const option = document.createElement('option');
       option.value = index;
       option.textContent = `${voice.name} (${voice.lang})`;
-      if (voice === this.currentVoice) {
+      if (voice === this.selectedVoice) {
         option.selected = true;
       }
       voiceSelect.appendChild(option);
@@ -412,7 +411,7 @@ class SchoolNavigationApp {
     const coords = this.getCanvasCoordinates(e.clientX, e.clientY);
     const clickedNode = this.getNodeAt(coords.x, coords.y);
 
-    if (this.currentMode === 'view' || this.currentMode === 'pan') {
+    if (this.currentMode === 'view') {
       if (clickedNode) {
         this.selectedNode = clickedNode;
         this.isDragging = false;
@@ -453,7 +452,7 @@ class SchoolNavigationApp {
   }
 
   handleCanvasMouseMove(e) {
-    if (this.isDragging && (this.currentMode === 'view' || this.currentMode === 'pan')) {
+    if (this.isDragging && this.currentMode === 'view') {
       this.panX = e.clientX - this.dragStartX;
       this.panY = e.clientY - this.dragStartY;
     } else if (this.selectedNode && this.currentMode === 'move') {
@@ -553,6 +552,7 @@ class SchoolNavigationApp {
     this.connectingFromNode = null;
     
     this.updateRouteSelectors();
+    this.updateFloorPlanInfo();
   }
 
   setMode(mode) {
@@ -578,8 +578,8 @@ class SchoolNavigationApp {
     this.selectedNode = null;
     this.connectingFromNode = null;
     
-    // Update cursor
-    this.canvas.style.cursor = mode === 'pan' ? 'grab' : mode === 'add' ? 'crosshair' : 'default';
+    // Update cursor - pan functionality is always available in view mode
+    this.canvas.style.cursor = mode === 'add' ? 'crosshair' : 'default';
   }
 
   setNodeType(type) {
@@ -910,6 +910,7 @@ class SchoolNavigationApp {
     for (let i = 0; i < this.currentRoute.length - 1; i++) {
       const currentNode = this.nodes.get(this.currentRoute[i]);
       const nextNode = this.nodes.get(this.currentRoute[i + 1]);
+      const futureNode = i + 2 < this.currentRoute.length ? this.nodes.get(this.currentRoute[i + 2]) : null;
       
       if (i > 0) { // Skip first instruction as it's the start
         if (currentNode.floor !== nextNode.floor) {
@@ -923,15 +924,23 @@ class SchoolNavigationApp {
             }
           }
         } else {
-          // Same floor movement - contextual instructions
+          // Enhanced contextual instructions for same floor movement
           if (currentNode.type === 'corridor') {
             instructions.push(`Двигайтесь по коридору до ${nextNode.name}`);
           } else if (nextNode.type === 'corridor') {
-            instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
+            if (futureNode) {
+              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${futureNode.name}`);
+            } else {
+              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
+            }
           } else if (nextNode.type === 'exit') {
             instructions.push(`Направляйтесь к ${nextNode.name}`);
           } else {
-            instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
+            if (futureNode) {
+              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${futureNode.name}`);
+            } else {
+              instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
+            }
           }
         }
       }
@@ -1045,7 +1054,7 @@ class SchoolNavigationApp {
     this.speechSynthesis.cancel();
     
     const utterance = new SpeechSynthesisUtterance(this.currentInstruction);
-    utterance.voice = this.currentVoice;
+    utterance.voice = this.selectedVoice;
     utterance.rate = this.voiceSettings.rate;
     utterance.pitch = this.voiceSettings.pitch;
     utterance.volume = this.voiceSettings.volume;
@@ -1054,36 +1063,66 @@ class SchoolNavigationApp {
     this.speechSynthesis.speak(utterance);
   }
 
-  // Voice settings methods
+  // Enhanced voice settings methods
   selectVoice(voiceIndex) {
-    if (voiceIndex === '') {
-      this.currentVoice = null;
+    if (voiceIndex === '' || !this.voices.length) {
+      this.selectedVoice = null;
       return;
     }
     
-    const voices = this.speechSynthesis.getVoices();
-    this.currentVoice = voices[parseInt(voiceIndex)];
-    this.showNotification(`Выбран голос: ${this.currentVoice.name}`, 'info');
+    this.selectedVoice = this.voices[parseInt(voiceIndex)];
+    this.showNotification(`Выбран голос: ${this.selectedVoice.name}`, 'info');
   }
 
   setVoiceRate(rate) {
     this.voiceSettings.rate = Math.max(0.5, Math.min(2.0, rate));
-    document.getElementById('rateValue').textContent = this.voiceSettings.rate.toFixed(1);
+    const rateElement = document.getElementById('rateValue');
+    if (rateElement) {
+      rateElement.textContent = this.voiceSettings.rate.toFixed(1);
+    }
   }
 
   setVoicePitch(pitch) {
     this.voiceSettings.pitch = Math.max(0.5, Math.min(2.0, pitch));
-    document.getElementById('pitchValue').textContent = this.voiceSettings.pitch.toFixed(1);
+    const pitchElement = document.getElementById('pitchValue');
+    if (pitchElement) {
+      pitchElement.textContent = this.voiceSettings.pitch.toFixed(1);
+    }
   }
 
   toggleSubtitles() {
-    this.voiceSettings.showSubtitles = !this.voiceSettings.showSubtitles;
+    this.showSubtitles = !this.showSubtitles;
     const statusElement = document.getElementById('subtitleStatus');
-    statusElement.textContent = this.voiceSettings.showSubtitles ? 'Вкл' : 'Выкл';
+    if (statusElement) {
+      statusElement.textContent = this.showSubtitles ? 'Вкл' : 'Выкл';
+    }
     this.showNotification(
-      `Субтитры ${this.voiceSettings.showSubtitles ? 'включены' : 'выключены'}`, 
+      `Субтитры ${this.showSubtitles ? 'включены' : 'выключены'}`, 
       'info'
     );
+  }
+
+  retryQRScanner() {
+    this.qrRetryCount++;
+    
+    if (this.qrRetryCount >= this.maxQrRetries) {
+      this.showQRError('Превышено максимальное количество попыток. Проверьте настройки камеры.');
+      const retryButton = document.getElementById('retryQrScan');
+      if (retryButton) {
+        retryButton.style.display = 'none';
+      }
+      return;
+    }
+    
+    // Clean up previous scanner
+    if (this.html5QrcodeScanner) {
+      this.html5QrcodeScanner.stop().catch(console.error);
+    }
+    
+    // Wait a bit before retrying
+    setTimeout(() => {
+      this.startQRScanner();
+    }, 1000);
   }
 
   openQRScanner() {
@@ -1099,6 +1138,12 @@ class SchoolNavigationApp {
   }
 
   startQRScanner() {
+    // Check if library is loaded
+    if (typeof Html5Qrcode === 'undefined') {
+      this.showQRError('Библиотека QR-сканера не загружена. Попробуйте перезагрузить страницу.');
+      return;
+    }
+    
     const statusElement = document.getElementById('qrStatus');
     const errorElement = document.getElementById('qrError');
     const retryButton = document.getElementById('retryQrScan');
@@ -1251,10 +1296,25 @@ class SchoolNavigationApp {
   }
 
   saveMap() {
+    // Convert background images to base64 for saving
+    const backgroundsData = [];
+    for (const [floor, img] of this.floorBackgrounds) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      backgroundsData.push({
+        floor: floor,
+        data: canvas.toDataURL()
+      });
+    }
+    
     const mapData = {
       nodes: Array.from(this.nodes.entries()),
       connections: this.connections,
       floors: this.floors,
+      floorBackgrounds: backgroundsData,
       version: '1.0',
       timestamp: new Date().toISOString()
     };
@@ -1283,6 +1343,7 @@ class SchoolNavigationApp {
         // Clear current data
         this.nodes.clear();
         this.connections = [];
+        this.floorBackgrounds.clear();
         
         // Load nodes
         if (mapData.nodes && Array.isArray(mapData.nodes)) {
@@ -1302,7 +1363,20 @@ class SchoolNavigationApp {
           this.updateFloorSelectors();
         }
         
+        // Load floor backgrounds
+        if (mapData.floorBackgrounds && Array.isArray(mapData.floorBackgrounds)) {
+          mapData.floorBackgrounds.forEach(bgData => {
+            const img = new Image();
+            img.onload = () => {
+              this.floorBackgrounds.set(bgData.floor, img);
+              this.updateFloorPlanInfo();
+            };
+            img.src = bgData.data;
+          });
+        }
+        
         this.updateRouteSelectors();
+        this.updateFloorPlanInfo();
         this.showNotification('Карта загружена', 'success');
         
       } catch (error) {
@@ -1320,8 +1394,10 @@ class SchoolNavigationApp {
     this.currentRouteIndex = 0;
     this.isNavigating = false;
     this.currentLocation = null;
+    this.floorBackgrounds.clear();
     
     this.updateRouteSelectors();
+    this.updateFloorPlanInfo();
     document.getElementById('currentInstruction').textContent = '';
     this.showNotification('Карта очищена', 'info');
   }
@@ -1413,6 +1489,56 @@ class SchoolNavigationApp {
         notification.parentNode.removeChild(notification);
       }
     }, 3000);
+  }
+  
+  // Floor background management methods
+  loadFloorPlan(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        this.floorBackgrounds.set(this.currentFloor, img);
+        this.showNotification(`Схема загружена для этажа ${this.currentFloor}`, 'success');
+        this.updateFloorPlanInfo();
+      };
+      img.onerror = () => {
+        this.showNotification('Ошибка загрузки изображения', 'error');
+      };
+      img.src = e.target.result;
+    };
+    reader.onerror = () => {
+      this.showNotification('Ошибка чтения файла', 'error');
+    };
+    reader.readAsDataURL(file);
+  }
+  
+  removeFloorPlan() {
+    this.floorBackgrounds.delete(this.currentFloor);
+    this.showNotification('Схема удалена', 'info');
+    this.updateFloorPlanInfo();
+  }
+  
+  updateFloorPlanInfo() {
+    const info = document.getElementById('floorPlanInfo');
+    const removeBtn = document.getElementById('removeFloorPlan');
+    if (this.floorBackgrounds.has(this.currentFloor)) {
+      info.textContent = '✓ Схема загружена';
+      removeBtn.style.display = 'block';
+    } else {
+      info.textContent = '';
+      removeBtn.style.display = 'none';
+    }
+  }
+  
+  drawBackground() {
+    if (this.floorBackgrounds.has(this.currentFloor)) {
+      const img = this.floorBackgrounds.get(this.currentFloor);
+      this.ctx.save();
+      this.ctx.globalAlpha = this.backgroundOpacity;
+      // Draw image to fit canvas
+      this.ctx.drawImage(img, 0, 0, this.canvas.width / this.scale, this.canvas.height / this.scale);
+      this.ctx.restore();
+    }
   }
 
   drawNode(node) {
@@ -1567,7 +1693,10 @@ class SchoolNavigationApp {
     this.ctx.translate(this.panX, this.panY);
     this.ctx.scale(this.scale, this.scale);
     
-    // Draw connections first
+    // Draw background image first
+    this.drawBackground();
+    
+    // Draw connections
     this.connections.forEach(conn => this.drawConnection(conn));
     
     // Draw route
@@ -1606,7 +1735,7 @@ class SchoolNavigationApp {
 document.addEventListener('DOMContentLoaded', () => {
   const app = new SchoolNavigationApp();
   
-  // Export app to global scope for debugging
+  // Export app to global scope for debugging and external event handlers
   window.app = app;
   
   console.log('School Navigation App initialized successfully');
