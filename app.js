@@ -1,1515 +1,1613 @@
-class SchoolMapApp {
-    constructor() {
-        this.canvas = document.getElementById('mapCanvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.isDarkTheme = false;
-        this.floorToDelete = null;
-        
-        // Authentication
-        this.isAuthenticated = false;
-        this.adminPassword = '1430';
-        this.pendingAction = null;
-        this.pendingActionData = null;
-        
-        // Map data
-        this.nodes = new Map();
-        this.connections = [];
-        this.currentPath = [];
-        this.currentLocation = null;
-        
-        // Interaction state
-        this.mode = 'view';
-        this.nodeType = 'room';
-        this.selectedNode = null;
-        this.connectingNodes = [];
-        this.isDragging = false;
-        this.dragOffset = { x: 0, y: 0 };
-        
-        // View state
-        this.camera = { x: 0, y: 0, scale: 1 };
-        this.lastPinchDistance = 0;
-        this.isPanning = false;
-        this.panStart = { x: 0, y: 0 };
-        
-        // Voice navigation
-        this.voiceInstructions = [];
-        this.currentInstructionIndex = 0;
-        this.isVoiceNavigating = false;
-        this.speechSynthesis = window.speechSynthesis;
-        this.voices = [];
-        this.selectedVoice = null;
-        
-        // QR Scanner
-        this.qrScanner = null;
-        
-        this.nodeTypes = {
-            room: { color: '#0066B3', size: 60, shape: 'rectangle', name: 'Комната' },
-            stair: { color: '#2ecc71', size: 50, shape: 'triangle', name: 'Лестница' },
-            corridor: { color: '#9b59b6', width: 80, height: 40, shape: 'rectangle_long', name: 'Коридор' },
-            exit: { color: '#e74c3c', size: 50, shape: 'pentagon', name: 'Выход' }
-        };
-        
-        // Floor management
-        this.currentFloor = 1;
-        this.floors = new Map();
-        this.maxFloors = 3;
-        
-        this.init();
-        // Update delete buttons visibility on initialization
-        setTimeout(() => this.updateFloorDeleteButtons(), 100);
-    }
-
-    init() {
-        this.setupCanvas();
-        this.setupEventListeners();
-        this.initializeExampleNodes();
-        this.initializeVoices();
-        this.render();
-        window.addEventListener('resize', () => this.setupCanvas());
-    }
+class SchoolNavigationApp {
+  constructor() {
+    this.canvas = null;
+    this.ctx = null;
+    this.currentFloor = 1;
+    this.currentMode = 'view';
+    this.currentNodeType = 'room';
+    this.isAuthenticated = false;
+    this.currentTheme = 'light';
+    this.scale = 1;
+    this.panX = 0;
+    this.panY = 0;
+    this.isDragging = false;
+    this.dragStartX = 0;
+    this.dragStartY = 0;
+    this.selectedNode = null;
+    this.connectingFromNode = null;
+    this.currentRoute = [];
+    this.currentRouteIndex = 0;
+    this.isNavigating = false;
+    this.currentLocation = null;
+    this.speechSynthesis = null;
+    this.currentVoice = null;
+    this.qrStream = null;
+    this.floors = [1, 2, 3];
     
-    initializeVoices() {
-        // Wait for voices to load
-        if (this.speechSynthesis.getVoices().length === 0) {
-            this.speechSynthesis.addEventListener('voiceschanged', () => {
-                this.loadVoices();
-            });
-        } else {
-            this.loadVoices();
-        }
-    }
+    // Voice settings
+    this.voiceSettings = {
+      rate: 0.9,
+      pitch: 1.0,
+      volume: 1.0,
+      showSubtitles: true
+    };
     
-    loadVoices() {
-        this.voices = this.speechSynthesis.getVoices();
-        // Find Russian voice (prefer Google Russian)
-        this.selectedVoice = this.voices.find(voice => 
-            voice.lang === 'ru-RU' && voice.name.includes('Google')
-        ) || this.voices.find(voice => voice.lang === 'ru-RU') || null;
-    }
+    // QR Scanner settings
+    this.qrRetryCount = 0;
+    this.maxQrRetries = 3;
+    this.html5QrcodeScanner = null;
     
-    // Authentication methods
-    requirePassword(action, data = null) {
-        if (this.isAuthenticated) {
-            this.executeAction(action, data);
-            return;
-        }
-        
-        this.pendingAction = action;
-        this.pendingActionData = data;
-        this.showPasswordModal();
-    }
+    // Default school data
+    this.nodes = new Map();
+    this.connections = [];
     
-    showPasswordModal() {
-        const modal = document.getElementById('passwordModal');
-        const input = document.getElementById('passwordInput');
-        const error = document.getElementById('passwordError');
-        
-        input.value = '';
-        error.style.display = 'none';
-        modal.classList.add('show');
-        
-        // Focus on input
-        setTimeout(() => input.focus(), 100);
-    }
+    // Initialize the application
+    this.init();
+  }
+
+  init() {
+    this.setupCanvas();
+    this.setupEventListeners();
+    this.setupVoiceSynthesis();
+    this.loadDefaultData();
+    this.updateFloorSelectors();
+    this.render();
+    this.checkTheme();
+    this.showNotification('Добро пожаловать в систему навигации Школы №1430!', 'info');
+  }
+
+  setupCanvas() {
+    this.canvas = document.getElementById('mapCanvas');
+    this.ctx = this.canvas.getContext('2d');
     
-    hidePasswordModal() {
-        document.getElementById('passwordModal').classList.remove('show');
-        this.pendingAction = null;
-        this.pendingActionData = null;
-    }
+    // Set up high DPI canvas
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = rect.width * dpr;
+    this.canvas.height = rect.height * dpr;
+    this.ctx.scale(dpr, dpr);
+    this.canvas.style.width = rect.width + 'px';
+    this.canvas.style.height = rect.height + 'px';
     
-    checkPassword() {
-        const input = document.getElementById('passwordInput');
-        const error = document.getElementById('passwordError');
-        const password = input.value;
-        
-        if (password === this.adminPassword) {
-            this.isAuthenticated = true;
-            this.hidePasswordModal();
-            this.showNotification('Доступ разрешён', 'success');
-            
-            if (this.pendingAction) {
-                this.executeAction(this.pendingAction, this.pendingActionData);
-            }
-        } else {
-            error.style.display = 'block';
-            input.value = '';
-            input.focus();
-        }
-    }
-    
-    executeAction(action, data) {
-        switch (action) {
-            case 'switchMode':
-                this.switchMode(data.mode, data.element);
-                break;
-            case 'addFloor':
-                this.addFloorAction();
-                break;
-            case 'deleteFloor':
-                this.showDeleteFloorConfirmation(data.floor);
-                break;
-            case 'saveMap':
-                this.saveMapAction();
-                break;
-            case 'loadMap':
-                document.getElementById('loadMapInput').click();
-                break;
-            case 'clearAll':
-                this.clearAllAction();
-                break;
-        }
-    }
-    
-    isProtectedMode(mode) {
-        return ['add', 'edit', 'connect', 'delete', 'move'].includes(mode);
-    }
+    // Handle resize
+    window.addEventListener('resize', () => {
+      setTimeout(() => this.setupCanvas(), 100);
+    });
+  }
 
-    setupCanvas() {
-        const container = document.getElementById('canvasContainer');
-        const rect = container.getBoundingClientRect();
-        
-        this.canvas.width = rect.width * window.devicePixelRatio;
-        this.canvas.height = rect.height * window.devicePixelRatio;
-        
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = rect.height + 'px';
-        
-        this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-        this.canvasRect = { width: rect.width, height: rect.height };
-    }
+  setupEventListeners() {
+    // Floor buttons
+    document.querySelectorAll('.floor-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const floor = parseInt(e.target.dataset.floor);
+        this.switchFloor(floor);
+      });
+    });
 
-    setupEventListeners() {
-        // Mode buttons
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const mode = e.target.dataset.mode;
-                
-                if (this.isProtectedMode(mode)) {
-                    this.requirePassword('switchMode', { mode, element: e.target });
-                } else {
-                    this.switchMode(mode, e.target);
-                }
-            });
-        });
-        
-        // Password modal events
-        document.getElementById('closePasswordModal').addEventListener('click', () => this.hidePasswordModal());
-        document.getElementById('cancelPassword').addEventListener('click', () => this.hidePasswordModal());
-        document.getElementById('confirmPassword').addEventListener('click', () => this.checkPassword());
-        
-        // Enter key in password input
-        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.checkPassword();
-            }
-        });
+    // Add floor button
+    document.querySelector('.add-floor-btn').addEventListener('click', () => {
+      this.authenticateAction(() => this.addFloor());
+    });
 
-        // Node type buttons
-        document.querySelectorAll('.node-type-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.node-type-btn').forEach(b => b.classList.remove('active'));
-                e.target.closest('.node-type-btn').classList.add('active');
-                this.nodeType = e.target.closest('.node-type-btn').dataset.type;
-            });
-        });
+    // Theme toggle
+    document.querySelector('.theme-toggle').addEventListener('click', () => {
+      this.toggleTheme();
+    });
 
-        // Zoom controls
-        document.getElementById('zoomIn').addEventListener('click', () => this.zoom(1.2));
-        document.getElementById('zoomOut').addEventListener('click', () => this.zoom(0.8));
-        document.getElementById('resetView').addEventListener('click', () => this.resetView());
-        document.getElementById('floatingZoomIn').addEventListener('click', () => this.zoom(1.2));
-        document.getElementById('floatingZoomOut').addEventListener('click', () => this.zoom(0.8));
+    // Menu toggle (mobile)
+    document.querySelector('.menu-toggle').addEventListener('click', () => {
+      document.querySelector('.sidebar').classList.toggle('open');
+    });
 
-        // QR Scanner
-        document.getElementById('scanQR').addEventListener('click', () => this.startQRScanner());
-        document.getElementById('closeQR').addEventListener('click', () => this.stopQRScanner());
+    // Mode buttons
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const mode = e.target.dataset.mode;
+        this.setMode(mode);
+      });
+    });
 
-        // Route planning
-        document.getElementById('buildRoute').addEventListener('click', () => this.buildRoute());
-        document.getElementById('clearRoute').addEventListener('click', () => this.clearRoute());
+    // Node type buttons
+    document.querySelectorAll('.node-type-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const type = e.target.dataset.type;
+        this.setNodeType(type);
+      });
+    });
 
-        // Voice navigation
-        document.getElementById('startVoiceNav').addEventListener('click', () => this.startVoiceNavigation());
-        document.getElementById('stopVoiceNav').addEventListener('click', () => this.stopVoiceNavigation());
-        document.getElementById('prevStep').addEventListener('click', () => this.previousInstruction());
-        document.getElementById('repeatStep').addEventListener('click', () => this.repeatCurrentInstruction());
-        document.getElementById('nextStep').addEventListener('click', () => this.nextInstruction());
-        
-        // Voice navigation controls
-        document.getElementById('startVoiceNav').innerHTML = '▶️ Начать навигацию';
-        document.getElementById('stopVoiceNav').innerHTML = '⏹️ Остановить';
-        document.getElementById('prevStep').innerHTML = '⬅️ Предыдущая';
-        document.getElementById('nextStep').innerHTML = '➡️ Следующая';
+    // Zoom controls
+    document.querySelectorAll('.zoom-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const action = e.target.dataset.action;
+        this.handleZoom(action);
+      });
+    });
 
-        // Map management
-        document.getElementById('saveMap').addEventListener('click', () => {
-            this.requirePassword('saveMap');
-        });
-        document.getElementById('loadMap').addEventListener('click', () => {
-            this.requirePassword('loadMap');
-        });
-        document.getElementById('loadMapInput').addEventListener('change', (e) => this.loadMap(e));
-        document.getElementById('clearAll').addEventListener('click', () => {
-            this.requirePassword('clearAll');
-        });
+    // QR Scanner
+    document.querySelector('.qr-scanner-btn').addEventListener('click', () => {
+      this.openQRScanner();
+    });
 
-        // Theme toggle
-        document.getElementById('themeToggle').addEventListener('click', () => this.toggleTheme());
+    // Route planning
+    document.getElementById('buildRoute').addEventListener('click', () => {
+      this.buildRoute();
+    });
 
-        // Mobile menu
-        document.getElementById('menuToggle').addEventListener('click', () => this.toggleSidebar());
-        
-        // Floor controls
-        document.querySelectorAll('.floor-btn').forEach(btn => {
-            if (!btn.classList.contains('add-floor')) {
-                btn.addEventListener('click', (e) => {
-                    const floor = parseInt(e.target.dataset.floor);
-                    this.switchFloor(floor);
-                });
-            }
-        });
-        
-        document.getElementById('addFloor').addEventListener('click', () => {
-            this.requirePassword('addFloor');
-        });
-        
-        // Floor delete buttons
-        document.querySelectorAll('.floor-delete-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const floor = parseInt(e.target.dataset.floor);
-                this.requirePassword('deleteFloor', { floor });
-            });
-        });
-        
-        // Delete floor modal
-        document.getElementById('closeDeleteFloorModal').addEventListener('click', () => this.closeDeleteFloorModal());
-        document.getElementById('cancelDeleteFloor').addEventListener('click', () => this.closeDeleteFloorModal());
-        document.getElementById('confirmDeleteFloor').addEventListener('click', () => this.confirmDeleteFloor());
+    document.getElementById('clearRoute').addEventListener('click', () => {
+      this.clearRoute();
+    });
 
-        // Node editor modal
-        document.getElementById('closeNodeModal').addEventListener('click', () => this.closeNodeEditor());
-        document.getElementById('cancelNodeEdit').addEventListener('click', () => this.closeNodeEditor());
-        document.getElementById('nodeForm').addEventListener('submit', (e) => this.saveNodeEdit(e));
+    // Voice navigation
+    document.getElementById('startNavigation').addEventListener('click', () => {
+      this.startNavigation();
+    });
 
-        // Canvas events
-        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
-        this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+    document.getElementById('stopNavigation').addEventListener('click', () => {
+      this.stopNavigation();
+    });
 
-        // Touch events
-        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
-        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
-        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+    document.getElementById('prevInstruction').addEventListener('click', () => {
+      this.previousInstruction();
+    });
 
-        // Prevent context menu
-        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    }
-    
-    switchMode(mode, element) {
-        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-        element.classList.add('active');
-        this.mode = mode;
-        this.selectedNode = null;
-        this.connectingNodes = [];
-        this.render();
-    }
+    document.getElementById('nextInstruction').addEventListener('click', () => {
+      this.nextInstruction();
+    });
 
-    initializeExampleNodes() {
-        // Floor 1 nodes with corridors and exit
-        const floor1Nodes = [
-            { id: 'exit1', type: 'exit', name: 'Главный выход', info: 'Выход на ул. Угличская', floor: 1, x: 100, y: 200, qrCode: 'exit1' },
-            { id: 'corridor1_1', type: 'corridor', name: 'Коридор главный', info: '1 этаж', floor: 1, x: 250, y: 200, qrCode: 'corridor1_1' },
-            { id: 'room101', type: 'room', name: 'Кабинет 101', info: 'Математика', floor: 1, x: 400, y: 150, qrCode: 'room101' },
-            { id: 'room102', type: 'room', name: 'Кабинет 102', info: 'Физика', floor: 1, x: 400, y: 250, qrCode: 'room102' },
-            { id: 'stairs1_f1', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', floor: 1, connectsToFloor: 2, x: 550, y: 200, qrCode: 'stairs1_f1' }
-        ];
-        
-        // Floor 2 nodes with corridors
-        const floor2Nodes = [
-            { id: 'corridor2_1', type: 'corridor', name: 'Коридор центральный', info: '2 этаж', floor: 2, x: 250, y: 200, qrCode: 'corridor2_1' },
-            { id: 'room201', type: 'room', name: 'Кабинет 201', info: 'Русский язык', floor: 2, x: 400, y: 150, qrCode: 'room201' },
-            { id: 'room202', type: 'room', name: 'Кабинет 202', info: 'Литература', floor: 2, x: 400, y: 250, qrCode: 'room202' },
-            { id: 'stairs1_f2', type: 'stair', name: 'Лестница 1', info: 'На 1 и 3 этаж', floor: 2, connectsToFloors: [1, 3], x: 550, y: 200, qrCode: 'stairs1_f2' },
-            { id: 'stairs2_f2', type: 'stair', name: 'Лестница 2', info: 'На 3 этаж', floor: 2, connectsToFloor: 3, x: 100, y: 200, qrCode: 'stairs2_f2' }
-        ];
-        
-        // Floor 3 nodes with corridors
-        const floor3Nodes = [
-            { id: 'corridor3_1', type: 'corridor', name: 'Коридор верхний', info: '3 этаж', floor: 3, x: 250, y: 200, qrCode: 'corridor3_1' },
-            { id: 'room301', type: 'room', name: 'Кабинет 301', info: 'Информатика', floor: 3, x: 400, y: 150, qrCode: 'room301' },
-            { id: 'room302', type: 'room', name: 'Кабинет 302', info: 'Английский язык', floor: 3, x: 400, y: 250, qrCode: 'room302' },
-            { id: 'stairs2_f3', type: 'stair', name: 'Лестница 2', info: 'На 2 этаж', floor: 3, connectsToFloor: 2, x: 100, y: 200, qrCode: 'stairs2_f3' }
-        ];
+    document.getElementById('repeatInstruction').addEventListener('click', () => {
+      this.repeatInstruction();
+    });
 
-        // Add all nodes
-        [...floor1Nodes, ...floor2Nodes, ...floor3Nodes].forEach(node => {
-            this.nodes.set(node.id, node);
-        });
-
-        // Add connections with new node layout
-        this.connections = [
-            // Floor 1 connections
-            { from: 'exit1', to: 'corridor1_1' },
-            { from: 'corridor1_1', to: 'room101' },
-            { from: 'corridor1_1', to: 'room102' },
-            { from: 'corridor1_1', to: 'stairs1_f1' },
-            
-            // Floor 2 connections
-            { from: 'stairs1_f2', to: 'corridor2_1' },
-            { from: 'stairs2_f2', to: 'corridor2_1' },
-            { from: 'corridor2_1', to: 'room201' },
-            { from: 'corridor2_1', to: 'room202' },
-            
-            // Floor 3 connections
-            { from: 'stairs2_f3', to: 'corridor3_1' },
-            { from: 'corridor3_1', to: 'room301' },
-            { from: 'corridor3_1', to: 'room302' },
-            
-            // Between floors connections
-            { from: 'stairs1_f1', to: 'stairs1_f2' },
-            { from: 'stairs2_f2', to: 'stairs2_f3' }
-        ];
-
-        this.updateNodeSelects();
-    }
-
-    updateNodeSelects() {
-        const startSelect = document.getElementById('startPoint');
-        const endSelect = document.getElementById('endPoint');
-        
-        startSelect.innerHTML = '<option value="">Выберите начальную точку</option>';
-        endSelect.innerHTML = '<option value="">Выберите конечную точку</option>';
-        
-        // Group nodes by floor for better organization
-        const nodesByFloor = {};
-        this.nodes.forEach((node, id) => {
-            if (!nodesByFloor[node.floor]) {
-                nodesByFloor[node.floor] = [];
-            }
-            nodesByFloor[node.floor].push({ id, node });
-        });
-        
-        // Add options grouped by floor
-        Object.keys(nodesByFloor).sort((a, b) => a - b).forEach(floor => {
-            const floorGroup1 = document.createElement('optgroup');
-            const floorGroup2 = document.createElement('optgroup');
-            floorGroup1.label = `Этаж ${floor}`;
-            floorGroup2.label = `Этаж ${floor}`;
-            
-            nodesByFloor[floor].forEach(({ id, node }) => {
-                const option1 = new Option(node.name, id);
-                const option2 = new Option(node.name, id);
-                floorGroup1.appendChild(option1);
-                floorGroup2.appendChild(option2);
-            });
-            
-            startSelect.appendChild(floorGroup1);
-            endSelect.appendChild(floorGroup2);
-        });
-    }
-
-    // Canvas interaction methods
-    getMousePos(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        return {
-            x: (e.clientX - rect.left - this.camera.x) / this.camera.scale,
-            y: (e.clientY - rect.top - this.camera.y) / this.camera.scale
-        };
-    }
-
-    getTouchPos(touch) {
-        const rect = this.canvas.getBoundingClientRect();
-        return {
-            x: (touch.clientX - rect.left - this.camera.x) / this.camera.scale,
-            y: (touch.clientY - rect.top - this.camera.y) / this.camera.scale
-        };
-    }
-
-    findNodeAtPosition(pos) {
-        for (const [id, node] of this.nodes) {
-            const typeConfig = this.nodeTypes[node.type];
-            let isInside = false;
-            
-            if (typeConfig.shape === 'rectangle_long') {
-                // Corridor - rectangular shape
-                const halfWidth = typeConfig.width / 2;
-                const halfHeight = typeConfig.height / 2;
-                isInside = pos.x >= node.x - halfWidth && pos.x <= node.x + halfWidth &&
-                          pos.y >= node.y - halfHeight && pos.y <= node.y + halfHeight;
-            } else {
-                // Other nodes - circular hit detection
-                const distance = Math.sqrt((pos.x - node.x) ** 2 + (pos.y - node.y) ** 2);
-                const nodeSize = typeConfig.size || 50;
-                isInside = distance <= nodeSize / 2;
-            }
-            
-            if (isInside) {
-                return { id, node };
-            }
-        }
-        return null;
-    }
-
-    handleMouseDown(e) {
-        const pos = this.getMousePos(e);
-        const foundNode = this.findNodeAtPosition(pos);
-
-        if (this.mode === 'view' || this.mode === 'pan') {
-            if (foundNode) {
-                this.isDragging = true;
-                this.selectedNode = foundNode.id;
-                this.dragOffset = {
-                    x: pos.x - foundNode.node.x,
-                    y: pos.y - foundNode.node.y
-                };
-            } else {
-                this.isPanning = true;
-                this.panStart = { x: e.clientX - this.camera.x, y: e.clientY - this.camera.y };
-            }
-        } else if (this.mode === 'add') {
-            if (!foundNode) {
-                this.addNode(pos);
-            }
-        } else if (this.mode === 'edit') {
-            if (foundNode) {
-                this.openNodeEditor(foundNode.id);
-            }
-        } else if (this.mode === 'connect') {
-            if (foundNode) {
-                this.handleNodeConnection(foundNode.id);
-            }
-        } else if (this.mode === 'delete') {
-            if (foundNode) {
-                this.deleteNode(foundNode.id);
-            }
-        }
-    }
-
-    handleMouseMove(e) {
-        const pos = this.getMousePos(e);
-
-        if (this.isDragging && this.selectedNode) {
-            const node = this.nodes.get(this.selectedNode);
-            node.x = pos.x - this.dragOffset.x;
-            node.y = pos.y - this.dragOffset.y;
-            this.render();
-        } else if (this.isPanning) {
-            this.camera.x = e.clientX - this.panStart.x;
-            this.camera.y = e.clientY - this.panStart.y;
-            this.render();
-        }
-    }
-
-    handleMouseUp(e) {
-        this.isDragging = false;
-        this.isPanning = false;
-        this.selectedNode = null;
-    }
-
-    handleWheel(e) {
-        e.preventDefault();
-        const pos = this.getMousePos(e);
-        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-        this.zoomAt(pos, zoomFactor);
-    }
-
-    // Touch event handlers
-    handleTouchStart(e) {
-        e.preventDefault();
-        
-        if (e.touches.length === 1) {
-            const touch = e.touches[0];
-            const pos = this.getTouchPos(touch);
-            const foundNode = this.findNodeAtPosition(pos);
-
-            if (this.mode === 'view' || this.mode === 'pan') {
-                if (foundNode) {
-                    this.isDragging = true;
-                    this.selectedNode = foundNode.id;
-                    this.dragOffset = {
-                        x: pos.x - foundNode.node.x,
-                        y: pos.y - foundNode.node.y
-                    };
-                } else {
-                    this.isPanning = true;
-                    this.panStart = { x: touch.clientX - this.camera.x, y: touch.clientY - this.camera.y };
-                }
-            } else if (this.mode === 'add' && !foundNode) {
-                this.addNode(pos);
-            } else if (this.mode === 'edit' && foundNode) {
-                this.openNodeEditor(foundNode.id);
-            } else if (this.mode === 'connect' && foundNode) {
-                this.handleNodeConnection(foundNode.id);
-            } else if (this.mode === 'delete' && foundNode) {
-                this.deleteNode(foundNode.id);
-            }
-        } else if (e.touches.length === 2) {
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            this.lastPinchDistance = Math.sqrt(
-                (touch2.clientX - touch1.clientX) ** 2 + (touch2.clientY - touch1.clientY) ** 2
-            );
-        }
-    }
-
-    handleTouchMove(e) {
-        e.preventDefault();
-        
-        if (e.touches.length === 1 && (this.isDragging || this.isPanning)) {
-            const touch = e.touches[0];
-            const pos = this.getTouchPos(touch);
-
-            if (this.isDragging && this.selectedNode) {
-                const node = this.nodes.get(this.selectedNode);
-                node.x = pos.x - this.dragOffset.x;
-                node.y = pos.y - this.dragOffset.y;
-                this.render();
-            } else if (this.isPanning) {
-                this.camera.x = touch.clientX - this.panStart.x;
-                this.camera.y = touch.clientY - this.panStart.y;
-                this.render();
-            }
-        } else if (e.touches.length === 2) {
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            const pinchDistance = Math.sqrt(
-                (touch2.clientX - touch1.clientX) ** 2 + (touch2.clientY - touch1.clientY) ** 2
-            );
-            
-            if (this.lastPinchDistance > 0) {
-                const zoomFactor = pinchDistance / this.lastPinchDistance;
-                const centerX = (touch1.clientX + touch2.clientX) / 2;
-                const centerY = (touch1.clientY + touch2.clientY) / 2;
-                const pos = this.getMousePos({ clientX: centerX, clientY: centerY });
-                this.zoomAt(pos, zoomFactor);
-            }
-            
-            this.lastPinchDistance = pinchDistance;
-        }
-    }
-
-    handleTouchEnd(e) {
-        this.isDragging = false;
-        this.isPanning = false;
-        this.selectedNode = null;
-        this.lastPinchDistance = 0;
-    }
-
-    // Node operations
-    addNode(pos) {
-        const id = `node_${Date.now()}`;
-        const typeConfig = this.nodeTypes[this.nodeType];
-        
-        // Count nodes of this type on current floor for naming
-        const nodesOnFloor = this.getNodesOnFloor(this.currentFloor);
-        const sameTypeCount = Array.from(nodesOnFloor.values()).filter(n => n.type === this.nodeType).length;
-        
-        const node = {
-            id,
-            type: this.nodeType,
-            name: `${typeConfig.name} ${this.currentFloor}${String(sameTypeCount + 1).padStart(2, '0')}`,
-            info: '',
-            floor: this.currentFloor,
-            x: pos.x,
-            y: pos.y,
-            qrCode: id
-        };
-        
-        // If it's a stair, ask which floor it connects to
-        if (this.nodeType === 'stair') {
-            this.promptStairConnection(node);
-        } else {
-            this.nodes.set(id, node);
-            this.updateNodeSelects();
-            this.render();
-            const typeName = this.nodeTypes[this.nodeType].name;
-            this.showNotification(`Добавлен ${typeName.toLowerCase()}: ${node.name} (этаж ${this.currentFloor})`, 'success');
-        }
-    }
-    
-    promptStairConnection(stairNode) {
-        const availableFloors = [];
-        for (let i = 1; i <= this.maxFloors; i++) {
-            if (i !== this.currentFloor) {
-                availableFloors.push(i);
-            }
-        }
-        
-        if (availableFloors.length === 0) {
-            this.showNotification('Нет доступных этажей для соединения', 'warning');
-            return;
-        }
-        
-        let connectsTo;
-        if (availableFloors.length === 1) {
-            connectsTo = availableFloors[0];
-        } else {
-            const floorList = availableFloors.join(', ');
-            const input = prompt(`Лестница на ${this.currentFloor} этаже. На какой этаж она ведет? (Доступны: ${floorList})`);
-            connectsTo = parseInt(input);
-            
-            if (!availableFloors.includes(connectsTo)) {
-                this.showNotification('Неверный этаж', 'error');
-                return;
-            }
-        }
-        
-        stairNode.connectsToFloor = connectsTo;
-        stairNode.info = `На ${connectsTo} этаж`;
-        
-        this.nodes.set(stairNode.id, stairNode);
-        this.updateNodeSelects();
-        this.render();
-        this.showNotification(`Добавлена лестница: с ${this.currentFloor} на ${connectsTo} этаж`, 'success');
-    }
-
-    deleteNode(nodeId) {
-        this.nodes.delete(nodeId);
-        this.connections = this.connections.filter(conn => conn.from !== nodeId && conn.to !== nodeId);
-        this.updateNodeSelects();
-        this.render();
-        this.showNotification('Узел удален', 'success');
-    }
-
-    handleNodeConnection(nodeId) {
-        if (this.connectingNodes.length === 0) {
-            this.connectingNodes.push(nodeId);
-            this.showNotification('Выберите второй узел для соединения', 'info');
-        } else if (this.connectingNodes.length === 1) {
-            if (this.connectingNodes[0] !== nodeId) {
-                this.connections.push({
-                    from: this.connectingNodes[0],
-                    to: nodeId
-                });
-                this.showNotification('Узлы соединены', 'success');
-            } else {
-                this.showNotification('Нельзя соединить узел с самим собой', 'warning');
-            }
-            this.connectingNodes = [];
-        }
-        this.render();
-    }
-
-    openNodeEditor(nodeId) {
-        const node = this.nodes.get(nodeId);
-        document.getElementById('nodeName').value = node.name;
-        document.getElementById('nodeInfo').value = node.info || '';
-        document.getElementById('nodeQR').value = node.qrCode || node.id;
-        document.getElementById('nodeModal').classList.add('show');
-        document.getElementById('nodeModal').dataset.nodeId = nodeId;
-    }
-
-    closeNodeEditor() {
-        document.getElementById('nodeModal').classList.remove('show');
-    }
-
-    saveNodeEdit(e) {
-        e.preventDefault();
-        const nodeId = document.getElementById('nodeModal').dataset.nodeId;
-        const node = this.nodes.get(nodeId);
-        
-        node.name = document.getElementById('nodeName').value;
-        node.info = document.getElementById('nodeInfo').value;
-        node.qrCode = document.getElementById('nodeQR').value;
-        
-        this.updateNodeSelects();
-        this.closeNodeEditor();
-        this.render();
-        this.showNotification('Узел обновлен', 'success');
-    }
-
-    // Camera and zoom methods
-    zoom(factor) {
-        const centerX = this.canvasRect.width / 2;
-        const centerY = this.canvasRect.height / 2;
-        const pos = {
-            x: (centerX - this.camera.x) / this.camera.scale,
-            y: (centerY - this.camera.y) / this.camera.scale
-        };
-        this.zoomAt(pos, factor);
-    }
-
-    zoomAt(pos, factor) {
-        const newScale = Math.max(0.1, Math.min(3, this.camera.scale * factor));
-        
-        this.camera.x -= (pos.x * (newScale - this.camera.scale));
-        this.camera.y -= (pos.y * (newScale - this.camera.scale));
-        this.camera.scale = newScale;
-        
-        this.render();
-    }
-
-    resetView() {
-        this.camera = { x: 0, y: 0, scale: 1 };
-        this.render();
-    }
-
-    // QR Scanner methods
-    async startQRScanner() {
-        try {
-            const modal = document.getElementById('qrModal');
-            modal.classList.add('show');
-            
-            this.qrScanner = new Html5Qrcode('qr-reader');
-            
-            const config = {
-                fps: 10,
-                qrbox: { width: 250, height: 250 },
-                facingMode: 'environment'
-            };
-            
-            await this.qrScanner.start(
-                { facingMode: 'environment' },
-                config,
-                (decodedText, decodedResult) => {
-                    this.handleQRResult(decodedText);
-                },
-                (errorMessage) => {
-                    // Handle scan failure, usually better to ignore
-                }
-            );
-        } catch (err) {
-            this.showNotification('Не удалось запустить камеру', 'error');
-            console.error(err);
-        }
-    }
-
-    async stopQRScanner() {
-        if (this.qrScanner) {
-            try {
-                await this.qrScanner.stop();
-                this.qrScanner = null;
-            } catch (err) {
-                console.error('Error stopping QR scanner:', err);
-            }
-        }
-        document.getElementById('qrModal').classList.remove('show');
-    }
-
-    handleQRResult(qrText) {
-        // Find node by QR code
-        let foundNode = null;
-        for (const [id, node] of this.nodes) {
-            if (node.qrCode === qrText || id === qrText) {
-                foundNode = { id, node };
-                break;
-            }
-        }
-        
-        if (foundNode) {
-            this.currentLocation = foundNode.id;
-            document.getElementById('currentLocation').style.display = 'block';
-            document.getElementById('locationText').textContent = foundNode.node.name;
-            document.getElementById('startPoint').value = foundNode.id;
-            this.showNotification(`Местоположение определено: ${foundNode.node.name}`, 'success');
-        } else {
-            this.showNotification('QR-код не распознан', 'warning');
-        }
-        
-        this.stopQRScanner();
-        this.render();
-    }
-
-    // Route building
-    buildRoute() {
-        const startId = document.getElementById('startPoint').value;
-        const endId = document.getElementById('endPoint').value;
-        
-        if (!startId || !endId) {
-            this.showNotification('Выберите начальную и конечную точку', 'warning');
-            return;
-        }
-        
-        if (startId === endId) {
-            this.showNotification('Начальная и конечная точка не могут совпадать', 'warning');
-            return;
-        }
-        
-        const path = this.findPath(startId, endId);
-        
-        if (path.length > 0) {
-            this.currentPath = path;
-            this.generateVoiceInstructions(path);
-            document.getElementById('voiceNavGroup').style.display = 'block';
-            this.render();
-            this.showNotification('Маршрут построен', 'success');
-        } else {
-            this.showNotification('Маршрут не найден', 'error');
-        }
-    }
-
-    clearRoute() {
-        this.currentPath = [];
-        this.voiceInstructions = [];
-        this.currentInstructionIndex = 0;
-        document.getElementById('voiceNavGroup').style.display = 'none';
-        this.render();
-        this.showNotification('Маршрут очищен', 'info');
-    }
-
-    findPath(startId, endId) {
-        // Simple BFS pathfinding
-        const queue = [[startId]];
-        const visited = new Set([startId]);
-        
-        while (queue.length > 0) {
-            const path = queue.shift();
-            const current = path[path.length - 1];
-            
-            if (current === endId) {
-                return path;
-            }
-            
-            // Find connected nodes
-            for (const conn of this.connections) {
-                let next = null;
-                if (conn.from === current && !visited.has(conn.to)) {
-                    next = conn.to;
-                } else if (conn.to === current && !visited.has(conn.from)) {
-                    next = conn.from;
-                }
-                
-                if (next) {
-                    visited.add(next);
-                    queue.push([...path, next]);
-                }
-            }
-        }
-        
-        return [];
-    }
-
-    // Voice navigation  
-    generateVoiceInstructions(path) {
-        this.voiceInstructions = [];
-        
-        for (let i = 0; i < path.length; i++) {
-            const currentNode = this.nodes.get(path[i]);
-            const nextNode = i < path.length - 1 ? this.nodes.get(path[i + 1]) : null;
-            
-            // Первая инструкция
-            if (i === 0) {
-                this.voiceInstructions.push(`Начинаем движение от: ${currentNode.name}`);
-                continue;
-            }
-            
-            // Последняя инструкция
-            if (i === path.length - 1) {
-                this.voiceInstructions.push(`Вы прибыли в: ${currentNode.name}`);
-                break;
-            }
-            
-            // Определяем тип узла и формируем инструкцию
-            if (currentNode.type === 'stair') {
-                if (nextNode && nextNode.floor !== currentNode.floor) {
-                    const direction = nextNode.floor > currentNode.floor ? 'Поднимитесь' : 'Спуститесь';
-                    this.voiceInstructions.push(`${direction} по лестнице: ${currentNode.name}. Переход на этаж ${nextNode.floor}`);
-                }
-            } else if (currentNode.type === 'corridor') {
-                this.voiceInstructions.push(`Пройдите через: ${currentNode.name}`);
-            } else if (currentNode.type === 'exit') {
-                this.voiceInstructions.push(`Направляйтесь к выходу: ${currentNode.name}`);
-            } else {
-                this.voiceInstructions.push(`Пройдите к: ${currentNode.name}`);
-            }
-        }
-        
-        this.currentInstructionIndex = 0;
-        this.updateCurrentInstruction();
-    }
-
-    startVoiceNavigation() {
-        if (this.voiceInstructions.length === 0) {
-            this.showNotification('Сначала постройте маршрут', 'warning');
-            return;
-        }
-        
-        // Проверяем доступность голосовой навигации
-        if (!this.speechSynthesis) {
-            this.showNotification('Голосовая навигация недоступна. Проверьте настройки устройства.', 'error');
-            return;
-        }
-        
-        this.isVoiceNavigating = true;
-        this.currentInstructionIndex = 0;
-        document.getElementById('startVoiceNav').style.display = 'none';
-        document.getElementById('stopVoiceNav').style.display = 'inline-flex';
-        document.getElementById('voiceStepControls').style.display = 'flex';
-        
-        this.speakCurrentInstruction();
-        this.showNotification('Голосовая навигация запущена', 'success');
-    }
-
-    stopVoiceNavigation() {
-        this.isVoiceNavigating = false;
-        if (this.speechSynthesis) {
-            this.speechSynthesis.cancel();
-        }
-        document.getElementById('startVoiceNav').style.display = 'inline-flex';
-        document.getElementById('stopVoiceNav').style.display = 'none';
-        document.getElementById('voiceStepControls').style.display = 'none';
-        this.showNotification('Голосовая навигация остановлена', 'info');
-    }
-
-    previousInstruction() {
-        if (this.currentInstructionIndex > 0) {
-            this.currentInstructionIndex--;
-            this.updateCurrentInstruction();
-            this.speakCurrentInstruction();
-        }
-    }
-
-    nextInstruction() {
-        if (this.currentInstructionIndex < this.voiceInstructions.length - 1) {
-            this.currentInstructionIndex++;
-            this.updateCurrentInstruction();
-            this.speakCurrentInstruction();
-        } else {
-            this.stopVoiceNavigation();
-            this.showNotification('Навигация завершена', 'success');
-        }
-    }
-    
-    // Add repeat current instruction method
-    repeatCurrentInstruction() {
-        if (this.voiceInstructions.length > 0 && this.currentInstructionIndex < this.voiceInstructions.length) {
-            this.speakCurrentInstruction();
-        }
-    }
-
-    updateCurrentInstruction() {
-        const instructionEl = document.getElementById('currentInstruction');
-        if (this.voiceInstructions.length > 0 && this.currentInstructionIndex < this.voiceInstructions.length) {
-            instructionEl.textContent = `${this.currentInstructionIndex + 1}/${this.voiceInstructions.length}: ${this.voiceInstructions[this.currentInstructionIndex]}`;
-        } else {
-            instructionEl.textContent = '';
-        }
-    }
-
-    speakCurrentInstruction() {
-        if (this.voiceInstructions.length > 0 && this.speechSynthesis && this.currentInstructionIndex < this.voiceInstructions.length) {
-            this.speechSynthesis.cancel();
-            
-            const text = this.voiceInstructions[this.currentInstructionIndex];
-            const utterance = new SpeechSynthesisUtterance(text);
-            
-            // Настройки для русского языка
-            utterance.lang = 'ru-RU';
-            utterance.rate = 0.9;  // Немного медленнее для чёткости
-            utterance.pitch = 1.0;  // Нормальная высота
-            utterance.volume = 1.0; // Максимальная громкость
-            
-            // Используем русский голос, если доступен
-            if (this.selectedVoice) {
-                utterance.voice = this.selectedVoice;
-            }
-            
-            // Обработка окончания воспроизведения
-            utterance.onend = () => {
-                if (this.isVoiceNavigating && this.currentInstructionIndex < this.voiceInstructions.length - 1) {
-                    // Пауза 1 секунда между инструкциями
-                    setTimeout(() => {
-                        if (this.isVoiceNavigating) {
-                            this.nextInstruction();
-                        }
-                    }, 1000);
-                } else if (this.currentInstructionIndex === this.voiceInstructions.length - 1) {
-                    setTimeout(() => {
-                        this.stopVoiceNavigation();
-                        this.showNotification('Навигация завершена', 'success');
-                    }, 500);
-                }
-            };
-            
-            // Обработка ошибок
-            utterance.onerror = (event) => {
-                console.error('Ошибка голосовой навигации:', event.error);
-                this.showNotification('Ошибка воспроизведения голоса', 'error');
-            };
-            
-            // Отображаем текущую инструкцию на экране
-            this.updateCurrentInstruction();
-            
-            // Запускаем воспроизведение
-            this.speechSynthesis.speak(utterance);
-        }
-    }
-
-    saveMapAction() {
-        this.saveMap();
-    }
-    
-    clearAllAction() {
-        this.clearAll();
-    }
-    
     // Map management
-    saveMap() {
-        const mapData = {
-            nodes: Array.from(this.nodes.entries()),
-            connections: this.connections,
-            version: '1.0'
-        };
-        
-        const dataStr = JSON.stringify(mapData, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `school-map-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        
-        URL.revokeObjectURL(url);
-        this.showNotification('Карта сохранена', 'success');
-    }
+    document.getElementById('saveMap').addEventListener('click', () => {
+      this.authenticateAction(() => this.saveMap());
+    });
 
-    loadMap(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const mapData = JSON.parse(event.target.result);
-                
-                this.nodes.clear();
-                this.connections = [];
-                
-                if (mapData.nodes) {
-                    mapData.nodes.forEach(([id, node]) => {
-                        this.nodes.set(id, node);
-                    });
-                }
-                
-                if (mapData.connections) {
-                    this.connections = mapData.connections;
-                }
-                
-                this.updateNodeSelects();
-                this.render();
-                this.showNotification('Карта загружена', 'success');
-            } catch (error) {
-                this.showNotification('Ошибка загрузки карты', 'error');
-                console.error(error);
-            }
-        };
-        
-        reader.readAsText(file);
-    }
+    document.getElementById('loadMap').addEventListener('click', () => {
+      this.authenticateAction(() => document.getElementById('loadMapFile').click());
+    });
 
-    clearAll() {
-        if (confirm('Вы уверены, что хотите очистить всю карту?')) {
-            this.nodes.clear();
-            this.connections = [];
-            this.currentPath = [];
-            this.currentLocation = null;
-            this.voiceInstructions = [];
-            
-            document.getElementById('currentLocation').style.display = 'none';
-            document.getElementById('voiceNavGroup').style.display = 'none';
-            
-            this.updateNodeSelects();
-            this.render();
-            this.showNotification('Карта очищена', 'info');
+    document.getElementById('loadMapFile').addEventListener('change', (e) => {
+      this.loadMap(e.target.files[0]);
+    });
+
+    document.getElementById('clearAll').addEventListener('click', () => {
+      this.authenticateAction(() => this.confirmAction('Очистить всю карту?', () => this.clearAll()));
+    });
+
+    // Canvas events
+    this.canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
+    this.canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+    this.canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
+    this.canvas.addEventListener('wheel', (e) => this.handleCanvasWheel(e));
+
+    // Touch events for mobile
+    this.canvas.addEventListener('touchstart', (e) => this.handleCanvasTouchStart(e));
+    this.canvas.addEventListener('touchmove', (e) => this.handleCanvasTouchMove(e));
+    this.canvas.addEventListener('touchend', (e) => this.handleCanvasTouchEnd(e));
+
+    // Modal events
+    this.setupModalEvents();
+  }
+
+  setupModalEvents() {
+    // Close modals
+    document.querySelectorAll('.modal-close').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const modal = e.target.closest('.modal');
+        this.closeModal(modal);
+      });
+    });
+
+    // Modal backdrop click
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          this.closeModal(modal);
         }
-    }
+      });
+    });
 
-    // Theme management
-    toggleTheme() {
-        this.isDarkTheme = !this.isDarkTheme;
-        document.body.setAttribute('data-color-scheme', this.isDarkTheme ? 'dark' : 'light');
-        
-        const themeIcon = document.querySelector('.theme-icon');
-        themeIcon.textContent = this.isDarkTheme ? '🌙' : '☀️';
-        
-        this.render();
-    }
+    // Password modal
+    document.getElementById('submitPassword').addEventListener('click', () => {
+      this.checkPassword();
+    });
 
-    // Mobile sidebar
-    toggleSidebar() {
-        const sidebar = document.getElementById('sidebar');
-        sidebar.classList.toggle('show');
-    }
+    document.getElementById('cancelPassword').addEventListener('click', () => {
+      this.closeModal(document.getElementById('passwordModal'));
+    });
+
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.checkPassword();
+      }
+    });
+
+    // Edit modal
+    document.getElementById('saveEdit').addEventListener('click', () => {
+      this.saveNodeEdit();
+    });
+
+    document.getElementById('cancelEdit').addEventListener('click', () => {
+      this.closeModal(document.getElementById('editModal'));
+    });
+
+    // Confirmation modal
+    document.getElementById('confirmAction').addEventListener('click', () => {
+      if (this.confirmCallback) {
+        this.confirmCallback();
+        this.confirmCallback = null;
+      }
+      this.closeModal(document.getElementById('confirmModal'));
+    });
+
+    document.getElementById('cancelConfirm').addEventListener('click', () => {
+      this.confirmCallback = null;
+      this.closeModal(document.getElementById('confirmModal'));
+    });
+
+    // QR modal
+    document.getElementById('stopQrScan').addEventListener('click', () => {
+      this.stopQRScanner();
+    });
     
-    // Floor management methods
-    switchFloor(floorNumber) {
-        this.currentFloor = floorNumber;
+    document.getElementById('retryQrScan').addEventListener('click', () => {
+      this.retryQRScanner();
+    });
+    
+    // Voice settings controls
+    document.getElementById('voiceSelect').addEventListener('change', (e) => {
+      this.selectVoice(e.target.value);
+    });
+    
+    document.getElementById('rateSlider').addEventListener('input', (e) => {
+      this.setVoiceRate(parseFloat(e.target.value));
+    });
+    
+    document.getElementById('pitchSlider').addEventListener('input', (e) => {
+      this.setVoicePitch(parseFloat(e.target.value));
+    });
+    
+    document.getElementById('subtitleToggle').addEventListener('click', () => {
+      this.toggleSubtitles();
+    });
+  }
+
+  setupVoiceSynthesis() {
+    if ('speechSynthesis' in window) {
+      this.speechSynthesis = window.speechSynthesis;
+      
+      // Wait for voices to load
+      const loadVoices = () => {
+        const voices = this.speechSynthesis.getVoices();
+        this.currentVoice = voices.find(voice => 
+          voice.lang.includes('ru') || voice.name.includes('Russian')
+        ) || voices[0];
         
-        // Update floor buttons
-        document.querySelectorAll('.floor-btn').forEach(btn => {
-            btn.classList.remove('active');
-            if (parseInt(btn.dataset.floor) === floorNumber) {
-                btn.classList.add('active');
-            }
-        });
-        
-        // Update current floor indicator
-        document.getElementById('currentFloorText').textContent = `Этаж ${floorNumber}`;
-        
-        // Clear current selection and connections
+        // Populate voice selector
+        this.populateVoiceSelector(voices);
+      };
+      
+      if (this.speechSynthesis.getVoices().length === 0) {
+        this.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+      } else {
+        loadVoices();
+      }
+    }
+  }
+
+  populateVoiceSelector(voices) {
+    const voiceSelect = document.getElementById('voiceSelect');
+    voiceSelect.innerHTML = '<option value="">Системный по умолчанию</option>';
+    
+    voices.forEach((voice, index) => {
+      const option = document.createElement('option');
+      option.value = index;
+      option.textContent = `${voice.name} (${voice.lang})`;
+      if (voice === this.currentVoice) {
+        option.selected = true;
+      }
+      voiceSelect.appendChild(option);
+    });
+  }
+
+  loadDefaultData() {
+    // Clear existing data
+    this.nodes.clear();
+    this.connections = [];
+
+    // Floor 1 nodes
+    const floor1Nodes = [
+      { id: 'exit1', type: 'exit', name: 'Главный выход', info: 'Выход на ул. Угличская', floor: 1, x: 100, y: 200, qrCode: 'exit1' },
+      { id: 'corridor1_1', type: 'corridor', name: 'Коридор главный', info: '1 этаж', floor: 1, x: 250, y: 200, qrCode: 'corridor1_1' },
+      { id: 'room101', type: 'room', name: 'Кабинет 101', info: 'Математика', floor: 1, x: 400, y: 150, qrCode: 'room101' },
+      { id: 'room102', type: 'room', name: 'Кабинет 102', info: 'Физика', floor: 1, x: 400, y: 250, qrCode: 'room102' },
+      { id: 'stairs1_f1', type: 'stair', name: 'Лестница 1', info: 'На 2 этаж', floor: 1, connectsToFloor: 2, x: 550, y: 200, qrCode: 'stairs1_f1' }
+    ];
+
+    // Floor 2 nodes
+    const floor2Nodes = [
+      { id: 'corridor2_1', type: 'corridor', name: 'Коридор центральный', info: '2 этаж', floor: 2, x: 250, y: 200, qrCode: 'corridor2_1' },
+      { id: 'room201', type: 'room', name: 'Кабинет 201', info: 'Русский язык', floor: 2, x: 400, y: 150, qrCode: 'room201' },
+      { id: 'room202', type: 'room', name: 'Кабинет 202', info: 'Литература', floor: 2, x: 400, y: 250, qrCode: 'room202' },
+      { id: 'stairs1_f2', type: 'stair', name: 'Лестница 1', info: 'На 1 и 3 этаж', floor: 2, connectsToFloors: [1, 3], x: 550, y: 200, qrCode: 'stairs1_f2' },
+      { id: 'stairs2_f2', type: 'stair', name: 'Лестница 2', info: 'На 3 этаж', floor: 2, connectsToFloor: 3, x: 100, y: 200, qrCode: 'stairs2_f2' }
+    ];
+
+    // Floor 3 nodes
+    const floor3Nodes = [
+      { id: 'corridor3_1', type: 'corridor', name: 'Коридор верхний', info: '3 этаж', floor: 3, x: 250, y: 200, qrCode: 'corridor3_1' },
+      { id: 'room301', type: 'room', name: 'Кабинет 301', info: 'Информатика', floor: 3, x: 400, y: 150, qrCode: 'room301' },
+      { id: 'room302', type: 'room', name: 'Кабинет 302', info: 'Английский язык', floor: 3, x: 400, y: 250, qrCode: 'room302' },
+      { id: 'stairs2_f3', type: 'stair', name: 'Лестница 2', info: 'На 2 этаж', floor: 3, connectsToFloor: 2, x: 100, y: 200, qrCode: 'stairs2_f3' }
+    ];
+
+    // Add all nodes
+    [...floor1Nodes, ...floor2Nodes, ...floor3Nodes].forEach(node => {
+      this.nodes.set(node.id, node);
+    });
+
+    // Default connections
+    this.connections = [
+      { from: 'exit1', to: 'corridor1_1' },
+      { from: 'corridor1_1', to: 'room101' },
+      { from: 'corridor1_1', to: 'room102' },
+      { from: 'corridor1_1', to: 'stairs1_f1' },
+      { from: 'stairs1_f2', to: 'corridor2_1' },
+      { from: 'stairs2_f2', to: 'corridor2_1' },
+      { from: 'corridor2_1', to: 'room201' },
+      { from: 'corridor2_1', to: 'room202' },
+      { from: 'stairs2_f3', to: 'corridor3_1' },
+      { from: 'corridor3_1', to: 'room301' },
+      { from: 'corridor3_1', to: 'room302' },
+      { from: 'stairs1_f1', to: 'stairs1_f2' },
+      { from: 'stairs2_f2', to: 'stairs2_f3' }
+    ];
+
+    this.updateRouteSelectors();
+  }
+
+  getCanvasCoordinates(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = (clientX - rect.left - this.panX) / this.scale;
+    const y = (clientY - rect.top - this.panY) / this.scale;
+    return { x, y };
+  }
+
+  getNodeAt(x, y) {
+    for (const [id, node] of this.nodes) {
+      if (node.floor !== this.currentFloor) continue;
+      
+      const distance = Math.sqrt((node.x - x) ** 2 + (node.y - y) ** 2);
+      const size = this.getNodeSize(node);
+      
+      if (distance <= size / 2) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  getNodeSize(node) {
+    switch (node.type) {
+      case 'room': return 60;
+      case 'stair': return 50;
+      case 'corridor': return Math.max(80, 40);
+      case 'exit': return 50;
+      default: return 40;
+    }
+  }
+
+  getNodeColor(node) {
+    switch (node.type) {
+      case 'room': return '#0066B3';
+      case 'stair': return '#2ecc71';
+      case 'corridor': return '#9b59b6';
+      case 'exit': return '#e74c3c';
+      default: return '#666';
+    }
+  }
+
+  handleCanvasMouseDown(e) {
+    const coords = this.getCanvasCoordinates(e.clientX, e.clientY);
+    const clickedNode = this.getNodeAt(coords.x, coords.y);
+
+    if (this.currentMode === 'view' || this.currentMode === 'pan') {
+      if (clickedNode) {
+        this.selectedNode = clickedNode;
+        this.isDragging = false;
+      } else {
         this.selectedNode = null;
-        this.connectingNodes = [];
-        
-        // Update node selects to show only current floor nodes
-        this.updateNodeSelects();
-        
-        this.render();
-        this.showNotification(`Переключились на этаж ${floorNumber}`, 'info');
-    }
-    
-    addFloorAction() {
-        this.addFloor();
-    }
-    
-    addFloor() {
-        if (this.maxFloors >= 10) {
-            this.showNotification('Максимальное количество этажей: 10', 'warning');
-            return;
-        }
-        
-        this.maxFloors++;
-        const floorNumber = this.maxFloors;
-        
-        // Add new floor button with delete button
-        const addBtn = document.getElementById('addFloor');
-        const floorContainer = document.createElement('div');
-        floorContainer.className = 'floor-with-delete';
-        
-        const newFloorBtn = document.createElement('button');
-        newFloorBtn.className = 'floor-btn';
-        newFloorBtn.dataset.floor = floorNumber;
-        newFloorBtn.textContent = `Этаж ${floorNumber}`;
-        newFloorBtn.addEventListener('click', () => this.switchFloor(floorNumber));
-        
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'floor-delete-btn';
-        deleteBtn.dataset.floor = floorNumber;
-        deleteBtn.title = 'Удалить этаж';
-        deleteBtn.innerHTML = '×';
-        deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.requirePassword('deleteFloor', { floor: floorNumber });
-        });
-        
-        floorContainer.appendChild(newFloorBtn);
-        floorContainer.appendChild(deleteBtn);
-        addBtn.parentNode.insertBefore(floorContainer, addBtn);
-        
-        this.updateFloorDeleteButtons();
-        this.showNotification(`Добавлен этаж ${floorNumber}`, 'success');
-    }
-    
-    showDeleteFloorConfirmation(floorNumber) {
-        this.floorToDelete = floorNumber;
-        const modal = document.getElementById('deleteFloorModal');
-        const text = document.getElementById('deleteFloorText');
-        text.textContent = `Вы уверены, что хотите удалить Этаж ${floorNumber}? Все узлы и связи на этом этаже будут удалены.`;
-        modal.classList.add('show');
-    }
-    
-    closeDeleteFloorModal() {
-        document.getElementById('deleteFloorModal').classList.remove('show');
-        this.floorToDelete = null;
-    }
-    
-    confirmDeleteFloor() {
-        if (!this.floorToDelete) return;
-        
-        const floorNumber = this.floorToDelete;
-        
-        // Count total floors
-        const totalFloors = document.querySelectorAll('.floor-btn:not(.add-floor)').length;
-        if (totalFloors <= 1) {
-            this.showNotification('Нельзя удалить последний этаж', 'warning');
-            this.closeDeleteFloorModal();
-            return;
-        }
-        
-        // Remove nodes on this floor
-        const nodesToDelete = [];
-        for (const [id, node] of this.nodes) {
-            if (node.floor === floorNumber) {
-                nodesToDelete.push(id);
-            }
-        }
-        
-        // Delete nodes and connections
-        nodesToDelete.forEach(nodeId => {
-            this.nodes.delete(nodeId);
-            this.connections = this.connections.filter(conn => 
-                conn.from !== nodeId && conn.to !== nodeId
-            );
-        });
-        
-        // Remove floor button
-        const floorContainer = document.querySelector(`[data-floor="${floorNumber}"]`).closest('.floor-with-delete');
-        if (floorContainer) {
-            floorContainer.remove();
-        }
-        
-        // Switch to first available floor if current floor was deleted
-        if (this.currentFloor === floorNumber) {
-            const firstFloorBtn = document.querySelector('.floor-btn:not(.add-floor)');
-            if (firstFloorBtn) {
-                const firstFloor = parseInt(firstFloorBtn.dataset.floor);
-                this.switchFloor(firstFloor);
-            }
-        }
-        
-        this.updateNodeSelects();
-        this.updateFloorDeleteButtons();
-        this.render();
-        this.closeDeleteFloorModal();
-        this.showNotification(`Этаж ${floorNumber} удалён`, 'success');
-    }
-    
-    updateFloorDeleteButtons() {
-        const floorButtons = document.querySelectorAll('.floor-btn:not(.add-floor)');
-        const deleteButtons = document.querySelectorAll('.floor-delete-btn');
-        
-        // Hide all delete buttons if only one floor remains
-        if (floorButtons.length <= 1) {
-            deleteButtons.forEach(btn => btn.style.display = 'none');
+        this.isDragging = true;
+        this.dragStartX = e.clientX - this.panX;
+        this.dragStartY = e.clientY - this.panY;
+      }
+    } else if (this.currentMode === 'add') {
+      if (!clickedNode) {
+        this.addNode(coords.x, coords.y);
+      }
+    } else if (this.currentMode === 'edit') {
+      if (clickedNode) {
+        this.editNode(clickedNode);
+      }
+    } else if (this.currentMode === 'connect') {
+      if (clickedNode) {
+        if (!this.connectingFromNode) {
+          this.connectingFromNode = clickedNode;
+          this.showNotification(`Выберите узел для соединения с "${clickedNode.name}"`, 'info');
         } else {
-            deleteButtons.forEach(btn => btn.style.display = 'flex');
+          this.connectNodes(this.connectingFromNode, clickedNode);
+          this.connectingFromNode = null;
         }
+      }
+    } else if (this.currentMode === 'delete') {
+      if (clickedNode) {
+        this.confirmAction(`Удалить "${clickedNode.name}"?`, () => this.deleteNode(clickedNode));
+      }
+    } else if (this.currentMode === 'move') {
+      if (clickedNode) {
+        this.selectedNode = clickedNode;
+        this.isDragging = false;
+      }
+    }
+  }
+
+  handleCanvasMouseMove(e) {
+    if (this.isDragging && (this.currentMode === 'view' || this.currentMode === 'pan')) {
+      this.panX = e.clientX - this.dragStartX;
+      this.panY = e.clientY - this.dragStartY;
+    } else if (this.selectedNode && this.currentMode === 'move') {
+      const coords = this.getCanvasCoordinates(e.clientX, e.clientY);
+      this.selectedNode.x = coords.x;
+      this.selectedNode.y = coords.y;
+    }
+  }
+
+  handleCanvasMouseUp(e) {
+    this.isDragging = false;
+    if (this.currentMode === 'move') {
+      this.selectedNode = null;
+    }
+  }
+
+  handleCanvasWheel(e) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    this.zoomAt(mouseX, mouseY, delta);
+  }
+
+  handleCanvasTouchStart(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    this.handleCanvasMouseDown({
+      clientX: touch.clientX,
+      clientY: touch.clientY
+    });
+  }
+
+  handleCanvasTouchMove(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    this.handleCanvasMouseMove({
+      clientX: touch.clientX,
+      clientY: touch.clientY
+    });
+  }
+
+  handleCanvasTouchEnd(e) {
+    e.preventDefault();
+    this.handleCanvasMouseUp(e);
+  }
+
+  zoomAt(x, y, factor) {
+    const oldScale = this.scale;
+    this.scale = Math.max(0.1, Math.min(3, this.scale * factor));
+    
+    if (this.scale !== oldScale) {
+      this.panX = x - (x - this.panX) * (this.scale / oldScale);
+      this.panY = y - (y - this.panY) * (this.scale / oldScale);
+      this.updateZoomDisplay();
+    }
+  }
+
+  handleZoom(action) {
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    
+    switch (action) {
+      case 'zoomIn':
+        this.zoomAt(centerX, centerY, 1.2);
+        break;
+      case 'zoomOut':
+        this.zoomAt(centerX, centerY, 0.8);
+        break;
+      case 'resetView':
+        this.scale = 1;
+        this.panX = 0;
+        this.panY = 0;
+        this.updateZoomDisplay();
+        break;
+    }
+  }
+
+  updateZoomDisplay() {
+    document.getElementById('zoomLevel').textContent = Math.round(this.scale * 100) + '%';
+  }
+
+  switchFloor(floor) {
+    this.currentFloor = floor;
+    
+    // Update UI
+    document.querySelectorAll('.floor-btn').forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.floor) === floor);
+    });
+    
+    document.getElementById('currentFloor').textContent = `Этаж ${floor}`;
+    
+    // Clear selections
+    this.selectedNode = null;
+    this.connectingFromNode = null;
+    
+    this.updateRouteSelectors();
+  }
+
+  setMode(mode) {
+    // Check authentication for protected modes
+    const protectedModes = ['add', 'edit', 'connect', 'delete', 'move'];
+    if (protectedModes.includes(mode) && !this.isAuthenticated) {
+      this.authenticateAction(() => this.setMode(mode));
+      return;
+    }
+
+    this.currentMode = mode;
+    
+    // Update UI
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    
+    // Show/hide node type selector
+    const nodeTypeGroup = document.querySelector('.node-type-group');
+    nodeTypeGroup.style.display = mode === 'add' ? 'block' : 'none';
+    
+    // Clear selections
+    this.selectedNode = null;
+    this.connectingFromNode = null;
+    
+    // Update cursor
+    this.canvas.style.cursor = mode === 'pan' ? 'grab' : mode === 'add' ? 'crosshair' : 'default';
+  }
+
+  setNodeType(type) {
+    this.currentNodeType = type;
+    
+    document.querySelectorAll('.node-type-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.type === type);
+    });
+  }
+
+  addNode(x, y) {
+    const id = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const node = {
+      id,
+      type: this.currentNodeType,
+      name: this.getDefaultNodeName(this.currentNodeType),
+      info: '',
+      floor: this.currentFloor,
+      x,
+      y,
+      qrCode: id
+    };
+    
+    if (this.currentNodeType === 'stair') {
+      node.connectsToFloor = this.currentFloor === 1 ? 2 : this.currentFloor - 1;
     }
     
-    getNodesOnFloor(floorNumber) {
-        const nodesOnFloor = new Map();
-        for (const [id, node] of this.nodes) {
-            if (node.floor === floorNumber || 
-                (node.type === 'stair' && this.isStairOnFloor(node, floorNumber))) {
-                nodesOnFloor.set(id, node);
-            }
-        }
-        return nodesOnFloor;
+    this.nodes.set(id, node);
+    this.updateRouteSelectors();
+    this.showNotification('Объект добавлен', 'success');
+  }
+
+  getDefaultNodeName(type) {
+    const counts = { room: 0, stair: 0, corridor: 0, exit: 0 };
+    
+    for (const [id, node] of this.nodes) {
+      if (node.floor === this.currentFloor && node.type === type) {
+        counts[type]++;
+      }
     }
     
-    isStairOnFloor(stairNode, floorNumber) {
-        if (stairNode.floor === floorNumber) return true;
-        if (stairNode.connectsToFloor === floorNumber) return true;
-        if (stairNode.connectsToFloors && stairNode.connectsToFloors.includes(floorNumber)) return true;
-        return false;
+    switch (type) {
+      case 'room': return `Кабинет ${this.currentFloor}${String(counts.room + 1).padStart(2, '0')}`;
+      case 'stair': return `Лестница ${counts.stair + 1}`;
+      case 'corridor': return `Коридор ${counts.corridor + 1}`;
+      case 'exit': return `Выход ${counts.exit + 1}`;
+      default: return 'Новый объект';
     }
+  }
 
-    // Notification system
-    showNotification(message, type = 'info') {
-        const notification = document.getElementById('notification');
-        notification.textContent = message;
-        notification.className = `notification ${type}`;
-        notification.classList.add('show');
-        
-        setTimeout(() => {
-            notification.classList.remove('show');
-        }, 3000);
+  editNode(node) {
+    this.selectedNode = node;
+    
+    // Fill form
+    document.getElementById('editName').value = node.name || '';
+    document.getElementById('editInfo').value = node.info || '';
+    document.getElementById('editQrCode').value = node.qrCode || '';
+    
+    // Show/hide floor connection for stairs
+    const floorGroup = document.getElementById('connectsToFloorGroup');
+    const floorSelect = document.getElementById('connectsToFloor');
+    
+    if (node.type === 'stair') {
+      floorGroup.style.display = 'block';
+      
+      // Populate floor options
+      floorSelect.innerHTML = '<option value="">Не выбрано</option>';
+      this.floors.forEach(floor => {
+        if (floor !== node.floor) {
+          const option = document.createElement('option');
+          option.value = floor;
+          option.textContent = `Этаж ${floor}`;
+          if (node.connectsToFloor === floor || (node.connectsToFloors && node.connectsToFloors.includes(floor))) {
+            option.selected = true;
+          }
+          floorSelect.appendChild(option);
+        }
+      });
+    } else {
+      floorGroup.style.display = 'none';
     }
+    
+    this.openModal(document.getElementById('editModal'));
+  }
 
-    // Rendering
-    render() {
-        this.ctx.clearRect(0, 0, this.canvasRect.width, this.canvasRect.height);
-        
-        this.ctx.save();
-        this.ctx.translate(this.camera.x, this.camera.y);
-        this.ctx.scale(this.camera.scale, this.camera.scale);
-        
-        // Draw connections
-        this.drawConnections();
-        
-        // Draw current path
-        this.drawPath();
-        
-        // Draw nodes
-        this.drawNodes();
-        
-        // Draw current location indicator
-        this.drawCurrentLocation();
-        
-        this.ctx.restore();
+  saveNodeEdit() {
+    if (!this.selectedNode) return;
+    
+    const name = document.getElementById('editName').value.trim();
+    const info = document.getElementById('editInfo').value.trim();
+    const qrCode = document.getElementById('editQrCode').value.trim();
+    
+    if (!name) {
+      this.showNotification('Название не может быть пустым', 'error');
+      return;
     }
+    
+    // Check for duplicate QR codes
+    if (qrCode) {
+      for (const [id, node] of this.nodes) {
+        if (id !== this.selectedNode.id && node.qrCode === qrCode) {
+          this.showNotification('QR-код уже используется', 'error');
+          return;
+        }
+      }
+    }
+    
+    this.selectedNode.name = name;
+    this.selectedNode.info = info;
+    this.selectedNode.qrCode = qrCode || this.selectedNode.id;
+    
+    if (this.selectedNode.type === 'stair') {
+      const connectsToFloor = parseInt(document.getElementById('connectsToFloor').value);
+      if (connectsToFloor) {
+        this.selectedNode.connectsToFloor = connectsToFloor;
+      }
+    }
+    
+    this.updateRouteSelectors();
+    this.closeModal(document.getElementById('editModal'));
+    this.showNotification('Объект обновлен', 'success');
+  }
 
-    drawConnections() {
-        this.ctx.strokeStyle = this.isDarkTheme ? '#4a5568' : '#a0aec0';
-        this.ctx.lineWidth = 2;
-        
-        const nodesOnCurrentFloor = this.getNodesOnFloor(this.currentFloor);
-        
-        for (const conn of this.connections) {
-            const fromNode = this.nodes.get(conn.from);
-            const toNode = this.nodes.get(conn.to);
-            
-            // Only draw connections if both nodes are visible on current floor
-            if (fromNode && toNode && 
-                nodesOnCurrentFloor.has(conn.from) && 
-                nodesOnCurrentFloor.has(conn.to)) {
-                
-                // Different style for inter-floor connections
-                if (fromNode.floor !== toNode.floor) {
-                    this.ctx.strokeStyle = this.isDarkTheme ? '#9f7aea' : '#805ad5';
-                    this.ctx.setLineDash([5, 5]);
-                } else {
-                    this.ctx.strokeStyle = this.isDarkTheme ? '#4a5568' : '#a0aec0';
-                    this.ctx.setLineDash([]);
-                }
-                
-                this.ctx.beginPath();
-                this.ctx.moveTo(fromNode.x, fromNode.y);
-                this.ctx.lineTo(toNode.x, toNode.y);
-                this.ctx.stroke();
+  connectNodes(node1, node2) {
+    if (node1.id === node2.id) {
+      this.showNotification('Нельзя соединить узел с самим собой', 'error');
+      return;
+    }
+    
+    // Check if connection already exists
+    const connectionExists = this.connections.some(conn => 
+      (conn.from === node1.id && conn.to === node2.id) ||
+      (conn.from === node2.id && conn.to === node1.id)
+    );
+    
+    if (connectionExists) {
+      this.showNotification('Соединение уже существует', 'warning');
+      return;
+    }
+    
+    this.connections.push({ from: node1.id, to: node2.id });
+    this.showNotification(`Соединены "${node1.name}" и "${node2.name}"`, 'success');
+  }
+
+  deleteNode(node) {
+    // Remove node
+    this.nodes.delete(node.id);
+    
+    // Remove all connections to this node
+    this.connections = this.connections.filter(conn => 
+      conn.from !== node.id && conn.to !== node.id
+    );
+    
+    this.updateRouteSelectors();
+    this.showNotification('Объект удален', 'success');
+  }
+
+  addFloor() {
+    const maxFloor = Math.max(...this.floors);
+    const newFloor = maxFloor + 1;
+    
+    this.floors.push(newFloor);
+    this.updateFloorSelectors();
+    this.showNotification(`Добавлен ${newFloor} этаж`, 'success');
+  }
+
+  updateFloorSelectors() {
+    const container = document.querySelector('.floor-controls');
+    const addBtn = container.querySelector('.add-floor-btn');
+    
+    // Remove existing floor buttons
+    container.querySelectorAll('.floor-btn').forEach(btn => btn.remove());
+    
+    // Add new floor buttons
+    this.floors.forEach(floor => {
+      const btn = document.createElement('button');
+      btn.className = `floor-btn ${floor === this.currentFloor ? 'active' : ''}`;
+      btn.dataset.floor = floor;
+      btn.textContent = `Этаж ${floor}`;
+      btn.addEventListener('click', (e) => {
+        const floor = parseInt(e.target.dataset.floor);
+        this.switchFloor(floor);
+      });
+      container.insertBefore(btn, addBtn);
+    });
+  }
+
+  updateRouteSelectors() {
+    const startSelect = document.getElementById('startPoint');
+    const endSelect = document.getElementById('endPoint');
+    
+    // Store current selections
+    const currentStart = startSelect.value;
+    const currentEnd = endSelect.value;
+    
+    // Clear options
+    startSelect.innerHTML = '<option value="">Выберите начальную точку</option>';
+    endSelect.innerHTML = '<option value="">Выберите конечную точку</option>';
+    
+    // Add nodes as options
+    for (const [id, node] of this.nodes) {
+      const option1 = document.createElement('option');
+      option1.value = id;
+      option1.textContent = `${node.name} (Этаж ${node.floor})`;
+      if (id === currentStart) option1.selected = true;
+      startSelect.appendChild(option1);
+      
+      const option2 = document.createElement('option');
+      option2.value = id;
+      option2.textContent = `${node.name} (Этаж ${node.floor})`;
+      if (id === currentEnd) option2.selected = true;
+      endSelect.appendChild(option2);
+    }
+  }
+
+  buildRoute() {
+    const startId = document.getElementById('startPoint').value;
+    const endId = document.getElementById('endPoint').value;
+    
+    if (!startId || !endId) {
+      this.showNotification('Выберите начальную и конечную точки', 'warning');
+      return;
+    }
+    
+    if (startId === endId) {
+      this.showNotification('Начальная и конечная точки не могут совпадать', 'error');
+      return;
+    }
+    
+    const route = this.findRoute(startId, endId);
+    if (route.length > 0) {
+      this.currentRoute = route;
+      this.currentRouteIndex = 0;
+      this.showNotification(`Маршрут построен (${route.length} точек)`, 'success');
+    } else {
+      this.showNotification('Маршрут не найден', 'error');
+    }
+  }
+
+  clearRoute() {
+    this.currentRoute = [];
+    this.currentRouteIndex = 0;
+    this.isNavigating = false;
+    document.getElementById('currentInstruction').textContent = '';
+    this.showNotification('Маршрут очищен', 'info');
+  }
+
+  findRoute(startId, endId) {
+    // Simple Dijkstra's algorithm implementation
+    const distances = new Map();
+    const previous = new Map();
+    const unvisited = new Set();
+    
+    // Initialize
+    for (const [id] of this.nodes) {
+      distances.set(id, Infinity);
+      previous.set(id, null);
+      unvisited.add(id);
+    }
+    distances.set(startId, 0);
+    
+    while (unvisited.size > 0) {
+      // Find unvisited node with minimum distance
+      let current = null;
+      let minDistance = Infinity;
+      
+      for (const id of unvisited) {
+        if (distances.get(id) < minDistance) {
+          minDistance = distances.get(id);
+          current = id;
+        }
+      }
+      
+      if (current === null) break;
+      
+      unvisited.delete(current);
+      
+      if (current === endId) break;
+      
+      // Check neighbors
+      const neighbors = this.getNeighbors(current);
+      for (const neighbor of neighbors) {
+        if (unvisited.has(neighbor)) {
+          const alt = distances.get(current) + 1; // All edges have weight 1
+          if (alt < distances.get(neighbor)) {
+            distances.set(neighbor, alt);
+            previous.set(neighbor, current);
+          }
+        }
+      }
+    }
+    
+    // Reconstruct path
+    const path = [];
+    let current = endId;
+    
+    while (current !== null) {
+      path.unshift(current);
+      current = previous.get(current);
+    }
+    
+    return path[0] === startId ? path : [];
+  }
+
+  getNeighbors(nodeId) {
+    const neighbors = [];
+    
+    for (const conn of this.connections) {
+      if (conn.from === nodeId) {
+        neighbors.push(conn.to);
+      } else if (conn.to === nodeId) {
+        neighbors.push(conn.from);
+      }
+    }
+    
+    return neighbors;
+  }
+
+  generateVoiceInstructions() {
+    if (this.currentRoute.length < 2) return [];
+    
+    const instructions = [];
+    
+    // Start instruction
+    const startNode = this.nodes.get(this.currentRoute[0]);
+    instructions.push(`Начинаем движение от ${startNode.name}`);
+    
+    for (let i = 0; i < this.currentRoute.length - 1; i++) {
+      const currentNode = this.nodes.get(this.currentRoute[i]);
+      const nextNode = this.nodes.get(this.currentRoute[i + 1]);
+      
+      if (i > 0) { // Skip first instruction as it's the start
+        if (currentNode.floor !== nextNode.floor) {
+          // Floor change via stairs
+          if (currentNode.type === 'stair' || nextNode.type === 'stair') {
+            const stairNode = currentNode.type === 'stair' ? currentNode : nextNode;
+            if (nextNode.floor > currentNode.floor) {
+              instructions.push(`Поднимитесь по ${stairNode.name} на ${nextNode.floor} этаж`);
+            } else {
+              instructions.push(`Спуститесь по ${stairNode.name} на ${nextNode.floor} этаж`);
             }
+          }
+        } else {
+          // Same floor movement - contextual instructions
+          if (currentNode.type === 'corridor') {
+            instructions.push(`Двигайтесь по коридору до ${nextNode.name}`);
+          } else if (nextNode.type === 'corridor') {
+            instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
+          } else if (nextNode.type === 'exit') {
+            instructions.push(`Направляйтесь к ${nextNode.name}`);
+          } else {
+            instructions.push(`Пройдите мимо ${currentNode.name}, направляйтесь к ${nextNode.name}`);
+          }
+        }
+      }
+    }
+    
+    // End instruction
+    const endNode = this.nodes.get(this.currentRoute[this.currentRoute.length - 1]);
+    instructions.push(`Вы прибыли в пункт назначения: ${endNode.name}`);
+    
+    return instructions;
+  }
+
+  startNavigation() {
+    if (this.currentRoute.length === 0) {
+      this.showNotification('Сначала постройте маршрут', 'warning');
+      return;
+    }
+    
+    this.isNavigating = true;
+    this.currentRouteIndex = 0;
+    
+    const instructions = this.generateVoiceInstructions();
+    if (instructions.length > 0) {
+      this.currentInstruction = instructions[0];
+      this.displayInstruction(this.currentInstruction);
+      this.speakCurrentInstruction();
+      
+      // Auto-advance through instructions
+      this.startAutoNavigation(instructions);
+    }
+    
+    this.showNotification('Навигация запущена', 'success');
+  }
+
+  startAutoNavigation(instructions) {
+    if (this.navigationTimer) {
+      clearInterval(this.navigationTimer);
+    }
+    
+    this.navigationTimer = setInterval(() => {
+      if (!this.isNavigating) {
+        clearInterval(this.navigationTimer);
+        return;
+      }
+      
+      this.currentRouteIndex++;
+      if (this.currentRouteIndex >= instructions.length) {
+        this.completeNavigation();
+        return;
+      }
+      
+      this.currentInstruction = instructions[this.currentRouteIndex];
+      this.displayInstruction(this.currentInstruction);
+      this.speakCurrentInstruction();
+    }, 5000); // 5 seconds between instructions
+  }
+
+  completeNavigation() {
+    this.isNavigating = false;
+    clearInterval(this.navigationTimer);
+    this.showNotification('Навигация завершена! Вы прибыли в пункт назначения.', 'success');
+  }
+
+  stopNavigation() {
+    this.isNavigating = false;
+    if (this.speechSynthesis) {
+      this.speechSynthesis.cancel();
+    }
+    if (this.navigationTimer) {
+      clearInterval(this.navigationTimer);
+    }
+    document.getElementById('currentInstruction').textContent = '';
+    this.showNotification('Навигация остановлена', 'info');
+  }
+
+  previousInstruction() {
+    if (!this.isNavigating || this.currentRouteIndex === 0) return;
+    
+    this.currentRouteIndex--;
+    const instructions = this.generateVoiceInstructions();
+    this.currentInstruction = instructions[this.currentRouteIndex];
+    this.displayInstruction(this.currentInstruction);
+    this.speakCurrentInstruction();
+  }
+
+  nextInstruction() {
+    if (!this.isNavigating) return;
+    
+    const instructions = this.generateVoiceInstructions();
+    if (this.currentRouteIndex < instructions.length - 1) {
+      this.currentRouteIndex++;
+      this.currentInstruction = instructions[this.currentRouteIndex];
+      this.displayInstruction(this.currentInstruction);
+      this.speakCurrentInstruction();
+    }
+  }
+
+  repeatInstruction() {
+    if (!this.isNavigating || !this.currentInstruction) return;
+    
+    this.speakCurrentInstruction();
+  }
+
+  displayInstruction(text) {
+    document.getElementById('currentInstruction').textContent = text;
+  }
+
+  speakCurrentInstruction() {
+    if (!this.speechSynthesis || !this.currentInstruction) return;
+    
+    this.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(this.currentInstruction);
+    utterance.voice = this.currentVoice;
+    utterance.rate = this.voiceSettings.rate;
+    utterance.pitch = this.voiceSettings.pitch;
+    utterance.volume = this.voiceSettings.volume;
+    utterance.lang = 'ru-RU';
+    
+    this.speechSynthesis.speak(utterance);
+  }
+
+  // Voice settings methods
+  selectVoice(voiceIndex) {
+    if (voiceIndex === '') {
+      this.currentVoice = null;
+      return;
+    }
+    
+    const voices = this.speechSynthesis.getVoices();
+    this.currentVoice = voices[parseInt(voiceIndex)];
+    this.showNotification(`Выбран голос: ${this.currentVoice.name}`, 'info');
+  }
+
+  setVoiceRate(rate) {
+    this.voiceSettings.rate = Math.max(0.5, Math.min(2.0, rate));
+    document.getElementById('rateValue').textContent = this.voiceSettings.rate.toFixed(1);
+  }
+
+  setVoicePitch(pitch) {
+    this.voiceSettings.pitch = Math.max(0.5, Math.min(2.0, pitch));
+    document.getElementById('pitchValue').textContent = this.voiceSettings.pitch.toFixed(1);
+  }
+
+  toggleSubtitles() {
+    this.voiceSettings.showSubtitles = !this.voiceSettings.showSubtitles;
+    const statusElement = document.getElementById('subtitleStatus');
+    statusElement.textContent = this.voiceSettings.showSubtitles ? 'Вкл' : 'Выкл';
+    this.showNotification(
+      `Субтитры ${this.voiceSettings.showSubtitles ? 'включены' : 'выключены'}`, 
+      'info'
+    );
+  }
+
+  openQRScanner() {
+    // Check if library is loaded
+    if (typeof Html5Qrcode === 'undefined') {
+      this.showQRError('Библиотека QR-сканера не загружена. Попробуйте перезагрузить страницу.');
+      return;
+    }
+    
+    this.qrRetryCount = 0;
+    this.openModal(document.getElementById('qrModal'));
+    this.startQRScanner();
+  }
+
+  startQRScanner() {
+    const statusElement = document.getElementById('qrStatus');
+    const errorElement = document.getElementById('qrError');
+    const retryButton = document.getElementById('retryQrScan');
+    
+    statusElement.textContent = 'Инициализация камеры...';
+    statusElement.style.display = 'block';
+    errorElement.classList.remove('show');
+    retryButton.style.display = 'none';
+    
+    this.html5QrcodeScanner = new Html5Qrcode('qrReader');
+    
+    const config = {
+      fps: 10,
+      qrbox: { width: 250, height: 250 },
+      aspectRatio: 1.0
+    };
+    
+    this.html5QrcodeScanner.start(
+      { facingMode: 'environment' },
+      config,
+      (decodedText, decodedResult) => {
+        this.handleQRDetection(decodedText);
+        statusElement.style.display = 'none';
+      },
+      (errorMessage) => {
+        // Ignore frequent scan errors
+      }
+    ).then(() => {
+      statusElement.textContent = 'Наведите камеру на QR-код';
+    }).catch(err => {
+      console.error('QR Scanner error:', err);
+      this.handleQRScannerError(err);
+    });
+  }
+
+  handleQRScannerError(error) {
+    const statusElement = document.getElementById('qrStatus');
+    const retryButton = document.getElementById('retryQrScan');
+    
+    statusElement.style.display = 'none';
+    
+    let errorMessage = 'Произошла ошибка при доступе к камере.';
+    let canRetry = true;
+    
+    if (error.name === 'NotAllowedError' || error.message.includes('Permission denied')) {
+      errorMessage = 'Доступ к камере запрещён. Разрешите доступ в настройках браузера.';
+      canRetry = false;
+    } else if (error.name === 'NotFoundError' || error.message.includes('No camera found')) {
+      errorMessage = 'Камера не найдена на этом устройстве';
+      canRetry = false;
+    } else if (error.name === 'TrackStartError' || error.message.includes('camera already in use')) {
+      errorMessage = 'Камера уже используется другим приложением';
+      canRetry = true;
+    } else if (error.name === 'OverconstrainedError') {
+      errorMessage = 'Камера не поддерживает требуемые параметры';
+      canRetry = false;
+    } else if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      errorMessage = 'Доступ к камере возможен только через HTTPS. Попробуйте открыть страницу локально.';
+      canRetry = false;
+    }
+    
+    this.showQRError(errorMessage);
+    
+    if (canRetry && this.qrRetryCount < this.maxQrRetries) {
+      retryButton.style.display = 'inline-flex';
+    }
+  }
+
+  showQRError(message) {
+    const errorElement = document.getElementById('qrError');
+    errorElement.textContent = message;
+    errorElement.classList.add('show');
+  }
+
+  retryQRScanner() {
+    this.qrRetryCount++;
+    
+    if (this.qrRetryCount >= this.maxQrRetries) {
+      this.showQRError('Превышено максимальное количество попыток. Проверьте настройки камеры.');
+      document.getElementById('retryQrScan').style.display = 'none';
+      return;
+    }
+    
+    // Clean up previous scanner
+    if (this.html5QrcodeScanner) {
+      this.html5QrcodeScanner.stop().catch(console.error);
+    }
+    
+    // Wait a bit before retrying
+    setTimeout(() => {
+      this.startQRScanner();
+    }, 1000);
+  }
+
+  startQRDetection() {
+    // This is a simplified QR detection
+    // In a real implementation, you'd use a library like jsQR
+    setTimeout(() => {
+      // Simulate QR code detection
+      const qrCodes = Array.from(this.nodes.values())
+        .filter(node => node.qrCode)
+        .map(node => node.qrCode);
+      
+      if (qrCodes.length > 0) {
+        const randomQR = qrCodes[Math.floor(Math.random() * qrCodes.length)];
+        this.handleQRDetection(randomQR);
+      }
+    }, 3000); // Simulate detection after 3 seconds
+  }
+
+  handleQRDetection(qrCode) {
+    const node = Array.from(this.nodes.values()).find(n => n.qrCode === qrCode);
+    
+    if (node) {
+      this.currentLocation = node;
+      this.switchFloor(node.floor);
+      
+      // Set as start point in route planning
+      document.getElementById('startPoint').value = node.id;
+      
+      const resultDiv = document.getElementById('qrResult');
+      resultDiv.textContent = `Обнаружен QR-код: ${node.name} (Этаж ${node.floor})`;
+      resultDiv.classList.add('show');
+      
+      this.showNotification(`Местоположение: ${node.name}`, 'success');
+    } else {
+      const resultDiv = document.getElementById('qrResult');
+      resultDiv.textContent = `Неизвестный QR-код: ${qrCode}`;
+      resultDiv.classList.add('show');
+    }
+  }
+
+  stopQRScanner() {
+    if (this.html5QrcodeScanner) {
+      this.html5QrcodeScanner.stop().then(() => {
+        console.log('QR Scanner stopped successfully');
+      }).catch(err => {
+        console.error('Error stopping QR scanner:', err);
+      });
+      this.html5QrcodeScanner = null;
+    }
+    
+    // Reset UI elements
+    document.getElementById('qrResult').classList.remove('show');
+    document.getElementById('qrError').classList.remove('show');
+    document.getElementById('qrStatus').style.display = 'none';
+    document.getElementById('retryQrScan').style.display = 'none';
+    
+    this.closeModal(document.getElementById('qrModal'));
+  }
+
+  saveMap() {
+    const mapData = {
+      nodes: Array.from(this.nodes.entries()),
+      connections: this.connections,
+      floors: this.floors,
+      version: '1.0',
+      timestamp: new Date().toISOString()
+    };
+    
+    const dataStr = JSON.stringify(mapData, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `school1430_map_${new Date().toISOString().split('T')[0]}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    
+    this.showNotification('Карта сохранена', 'success');
+  }
+
+  loadMap(file) {
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const mapData = JSON.parse(e.target.result);
+        
+        // Clear current data
+        this.nodes.clear();
+        this.connections = [];
+        
+        // Load nodes
+        if (mapData.nodes && Array.isArray(mapData.nodes)) {
+          mapData.nodes.forEach(([id, node]) => {
+            this.nodes.set(id, node);
+          });
         }
         
-        this.ctx.setLineDash([]);
-    }
+        // Load connections
+        if (mapData.connections && Array.isArray(mapData.connections)) {
+          this.connections = mapData.connections;
+        }
+        
+        // Load floors
+        if (mapData.floors && Array.isArray(mapData.floors)) {
+          this.floors = mapData.floors;
+          this.updateFloorSelectors();
+        }
+        
+        this.updateRouteSelectors();
+        this.showNotification('Карта загружена', 'success');
+        
+      } catch (error) {
+        this.showNotification('Ошибка при загрузке карты', 'error');
+      }
+    };
+    
+    reader.readAsText(file);
+  }
 
-    drawPath() {
-        if (this.currentPath.length < 2) return;
+  clearAll() {
+    this.nodes.clear();
+    this.connections = [];
+    this.currentRoute = [];
+    this.currentRouteIndex = 0;
+    this.isNavigating = false;
+    this.currentLocation = null;
+    
+    this.updateRouteSelectors();
+    document.getElementById('currentInstruction').textContent = '';
+    this.showNotification('Карта очищена', 'info');
+  }
+
+  toggleTheme() {
+    this.currentTheme = this.currentTheme === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', this.currentTheme);
+    
+    const themeIcon = document.querySelector('.theme-icon');
+    themeIcon.textContent = this.currentTheme === 'light' ? '🌙' : '☀️';
+    
+    this.showNotification(`Тема: ${this.currentTheme === 'light' ? 'Светлая' : 'Темная'}`, 'info');
+  }
+
+  checkTheme() {
+    // Check system preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      this.currentTheme = 'dark';
+    } else {
+      this.currentTheme = 'light';
+    }
+    
+    document.documentElement.setAttribute('data-theme', this.currentTheme);
+    const themeIcon = document.querySelector('.theme-icon');
+    themeIcon.textContent = this.currentTheme === 'light' ? '🌙' : '☀️';
+  }
+
+  authenticateAction(callback) {
+    if (this.isAuthenticated) {
+      callback();
+      return;
+    }
+    
+    this.pendingAction = callback;
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordError').classList.remove('show');
+    this.openModal(document.getElementById('passwordModal'));
+  }
+
+  checkPassword() {
+    const password = document.getElementById('passwordInput').value;
+    const errorDiv = document.getElementById('passwordError');
+    
+    if (password === '1430') {
+      this.isAuthenticated = true;
+      this.closeModal(document.getElementById('passwordModal'));
+      
+      if (this.pendingAction) {
+        this.pendingAction();
+        this.pendingAction = null;
+      }
+      
+      this.showNotification('Вход выполнен успешно', 'success');
+    } else {
+      errorDiv.textContent = 'Неверный пароль';
+      errorDiv.classList.add('show');
+      document.getElementById('passwordInput').focus();
+    }
+  }
+
+  confirmAction(message, callback) {
+    document.getElementById('confirmMessage').textContent = message;
+    this.confirmCallback = callback;
+    this.openModal(document.getElementById('confirmModal'));
+  }
+
+  openModal(modal) {
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeModal(modal) {
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  showNotification(message, type = 'info') {
+    const container = document.getElementById('notifications');
+    
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    container.appendChild(notification);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 3000);
+  }
+
+  drawNode(node) {
+    this.ctx.save();
+    
+    const size = this.getNodeSize(node);
+    const color = this.getNodeColor(node);
+    
+    this.ctx.fillStyle = color;
+    this.ctx.strokeStyle = '#333';
+    this.ctx.lineWidth = 2;
+    
+    // Highlight selected or current location
+    if (this.selectedNode === node) {
+      this.ctx.shadowColor = color;
+      this.ctx.shadowBlur = 10;
+    } else if (this.currentLocation === node) {
+      this.ctx.shadowColor = '#27ae60';
+      this.ctx.shadowBlur = 15;
+    }
+    
+    // Draw shape based on node type
+    switch (node.type) {
+      case 'room':
+        this.ctx.fillRect(node.x - size/2, node.y - size/2, size, size);
+        this.ctx.strokeRect(node.x - size/2, node.y - size/2, size, size);
+        break;
         
-        this.ctx.strokeStyle = '#e53e3e';
-        this.ctx.lineWidth = 4;
-        this.ctx.setLineDash([]);
-        
+      case 'stair':
         this.ctx.beginPath();
+        this.ctx.moveTo(node.x, node.y - size/2);
+        this.ctx.lineTo(node.x - size/2, node.y + size/2);
+        this.ctx.lineTo(node.x + size/2, node.y + size/2);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+        break;
         
-        for (let i = 0; i < this.currentPath.length; i++) {
-            const node = this.nodes.get(this.currentPath[i]);
-            if (node) {
-                if (i === 0) {
-                    this.ctx.moveTo(node.x, node.y);
-                } else {
-                    this.ctx.lineTo(node.x, node.y);
-                }
-            }
+      case 'corridor':
+        const width = 80;
+        const height = 40;
+        this.ctx.fillRect(node.x - width/2, node.y - height/2, width, height);
+        this.ctx.strokeRect(node.x - width/2, node.y - height/2, width, height);
+        break;
+        
+      case 'exit':
+        // Pentagon
+        this.ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+          const x = node.x + Math.cos(angle) * size / 2;
+          const y = node.y + Math.sin(angle) * size / 2;
+          if (i === 0) {
+            this.ctx.moveTo(x, y);
+          } else {
+            this.ctx.lineTo(x, y);
+          }
+        }
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+        break;
+    }
+    
+    // Draw label
+    this.ctx.fillStyle = '#000';
+    this.ctx.font = '12px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText(node.name, node.x, node.y + size/2 + 15);
+    
+    this.ctx.restore();
+  }
+
+  drawConnection(conn) {
+    const fromNode = this.nodes.get(conn.from);
+    const toNode = this.nodes.get(conn.to);
+    
+    if (!fromNode || !toNode) return;
+    
+    // Only draw connections on current floor or between floors via stairs
+    const shouldDraw = (fromNode.floor === this.currentFloor && toNode.floor === this.currentFloor) ||
+                      (fromNode.type === 'stair' && (fromNode.floor === this.currentFloor || toNode.floor === this.currentFloor)) ||
+                      (toNode.type === 'stair' && (fromNode.floor === this.currentFloor || toNode.floor === this.currentFloor));
+    
+    if (!shouldDraw) return;
+    
+    this.ctx.save();
+    this.ctx.strokeStyle = '#666';
+    this.ctx.lineWidth = 2;
+    
+    this.ctx.beginPath();
+    this.ctx.moveTo(fromNode.x, fromNode.y);
+    this.ctx.lineTo(toNode.x, toNode.y);
+    this.ctx.stroke();
+    
+    this.ctx.restore();
+  }
+
+  drawRoute() {
+    if (this.currentRoute.length < 2) return;
+    
+    this.ctx.save();
+    this.ctx.strokeStyle = '#f39c12';
+    this.ctx.lineWidth = 4;
+    this.ctx.lineCap = 'round';
+    this.ctx.setLineDash([10, 5]);
+    
+    for (let i = 0; i < this.currentRoute.length - 1; i++) {
+      const currentNode = this.nodes.get(this.currentRoute[i]);
+      const nextNode = this.nodes.get(this.currentRoute[i + 1]);
+      
+      if (currentNode && nextNode && currentNode.floor === this.currentFloor) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(currentNode.x, currentNode.y);
+        
+        if (nextNode.floor === this.currentFloor) {
+          this.ctx.lineTo(nextNode.x, nextNode.y);
         }
         
         this.ctx.stroke();
-        
-        // Highlight current instruction step
-        if (this.isVoiceNavigating && this.currentInstructionIndex < this.currentPath.length) {
-            const currentNode = this.nodes.get(this.currentPath[this.currentInstructionIndex]);
-            if (currentNode) {
-                this.ctx.strokeStyle = '#38a169';
-                this.ctx.lineWidth = 6;
-                this.ctx.beginPath();
-                this.ctx.arc(currentNode.x, currentNode.y, 40, 0, 2 * Math.PI);
-                this.ctx.stroke();
-            }
-        }
+      }
     }
-
-    drawNodes() {
-        const nodesOnCurrentFloor = this.getNodesOnFloor(this.currentFloor);
-        
-        for (const [id, node] of nodesOnCurrentFloor) {
-            const typeConfig = this.nodeTypes[node.type];
-            const isSelected = this.connectingNodes.includes(id);
-            
-            this.ctx.fillStyle = isSelected ? '#ffd700' : typeConfig.color;
-            this.ctx.strokeStyle = this.isDarkTheme ? '#2d3748' : '#1a202c';
-            this.ctx.lineWidth = 2;
-            
-            const size = typeConfig.size;
-            
-            this.ctx.beginPath();
-            
-            switch (typeConfig.shape) {
-                case 'rectangle':
-                    this.ctx.fillRect(node.x - size/2, node.y - size/2, size, size);
-                    this.ctx.strokeRect(node.x - size/2, node.y - size/2, size, size);
-                    break;
-                case 'rectangle_long':
-                    // Corridor - long rectangle
-                    const halfWidth = typeConfig.width / 2;
-                    const halfHeight = typeConfig.height / 2;
-                    this.ctx.fillRect(node.x - halfWidth, node.y - halfHeight, typeConfig.width, typeConfig.height);
-                    this.ctx.strokeRect(node.x - halfWidth, node.y - halfHeight, typeConfig.width, typeConfig.height);
-                    break;
-                case 'pentagon':
-                    // Exit - pentagon (house shape)
-                    const radius = size / 2;
-                    this.ctx.moveTo(node.x, node.y - radius);
-                    this.ctx.lineTo(node.x + radius * 0.6, node.y - radius * 0.2);
-                    this.ctx.lineTo(node.x + radius * 0.4, node.y + radius);
-                    this.ctx.lineTo(node.x - radius * 0.4, node.y + radius);
-                    this.ctx.lineTo(node.x - radius * 0.6, node.y - radius * 0.2);
-                    this.ctx.closePath();
-                    this.ctx.fill();
-                    this.ctx.stroke();
-                    break;
-                case 'circle':
-                    this.ctx.arc(node.x, node.y, size/2, 0, 2 * Math.PI);
-                    this.ctx.fill();
-                    this.ctx.stroke();
-                    break;
-                case 'triangle':
-                    this.ctx.moveTo(node.x, node.y - size/2);
-                    this.ctx.lineTo(node.x - size/2, node.y + size/2);
-                    this.ctx.lineTo(node.x + size/2, node.y + size/2);
-                    this.ctx.closePath();
-                    this.ctx.fill();
-                    this.ctx.stroke();
-                    break;
-            }
-            
-            // Draw floor indicator for stairs
-            if (node.type === 'stair' && node.connectsToFloor) {
-                this.ctx.fillStyle = this.isDarkTheme ? '#f7fafc' : '#1a202c';
-                this.ctx.font = '10px Arial';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText(`→${node.connectsToFloor}`, node.x, node.y - size/2 - 8);
-            }
-            
-            // Draw node label
-            this.ctx.fillStyle = this.isDarkTheme ? '#f7fafc' : '#1a202c';
-            this.ctx.font = '12px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText(node.name, node.x, node.y + size/2 + 15);
-            
-            // Draw floor number for non-current floor stairs
-            if (node.type === 'stair' && node.floor !== this.currentFloor) {
-                this.ctx.fillStyle = this.isDarkTheme ? '#90cdf4' : '#3182ce';
-                this.ctx.font = '10px Arial';
-                this.ctx.fillText(`(Этаж ${node.floor})`, node.x, node.y + size/2 + 28);
-            }
-        }
-    }
-
-    drawCurrentLocation() {
-        if (!this.currentLocation) return;
-        
-        const node = this.nodes.get(this.currentLocation);
-        if (!node) return;
-        
-        // Draw pulsing location indicator
-        const time = Date.now() / 1000;
-        const pulse = (Math.sin(time * 3) + 1) / 2;
-        const radius = 25 + pulse * 15;
-        
-        this.ctx.strokeStyle = '#3182ce';
-        this.ctx.lineWidth = 3;
-        this.ctx.setLineDash([5, 5]);
-        this.ctx.globalAlpha = 0.7;
-        
+    
+    // Highlight current position during navigation
+    if (this.isNavigating && this.currentRouteIndex < this.currentRoute.length) {
+      const currentNode = this.nodes.get(this.currentRoute[this.currentRouteIndex]);
+      if (currentNode && currentNode.floor === this.currentFloor) {
+        this.ctx.fillStyle = '#27ae60';
         this.ctx.beginPath();
-        this.ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
-        this.ctx.stroke();
+        this.ctx.arc(currentNode.x, currentNode.y, 20, 0, 2 * Math.PI);
+        this.ctx.fill();
         
-        this.ctx.setLineDash([]);
-        this.ctx.globalAlpha = 1;
+        // Pulsing effect
+        const time = Date.now() / 500;
+        this.ctx.fillStyle = `rgba(39, 174, 96, ${0.3 + 0.3 * Math.sin(time)})`;
+        this.ctx.beginPath();
+        this.ctx.arc(currentNode.x, currentNode.y, 30, 0, 2 * Math.PI);
+        this.ctx.fill();
+      }
     }
+    
+    this.ctx.restore();
+  }
+
+  render() {
+    // Clear canvas
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    this.ctx.save();
+    
+    // Apply transformations
+    this.ctx.translate(this.panX, this.panY);
+    this.ctx.scale(this.scale, this.scale);
+    
+    // Draw connections first
+    this.connections.forEach(conn => this.drawConnection(conn));
+    
+    // Draw route
+    this.drawRoute();
+    
+    // Draw nodes on current floor
+    for (const [id, node] of this.nodes) {
+      if (node.floor === this.currentFloor) {
+        this.drawNode(node);
+      }
+    }
+    
+    // Highlight connecting node
+    if (this.connectingFromNode && this.connectingFromNode.floor === this.currentFloor) {
+      this.ctx.strokeStyle = '#f39c12';
+      this.ctx.lineWidth = 4;
+      this.ctx.setLineDash([5, 5]);
+      
+      const size = this.getNodeSize(this.connectingFromNode) + 10;
+      this.ctx.strokeRect(
+        this.connectingFromNode.x - size/2,
+        this.connectingFromNode.y - size/2,
+        size,
+        size
+      );
+    }
+    
+    this.ctx.restore();
+    
+    // Request next frame
+    requestAnimationFrame(() => this.render());
+  }
 }
 
-// Initialize the application
-const app = new SchoolMapApp();
-
-// Animation loop for smooth animations
-function animate() {
-    app.render();
-    requestAnimationFrame(animate);
-}
-
-requestAnimationFrame(animate);
+// Initialize the application when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+  const app = new SchoolNavigationApp();
+  
+  // Export app to global scope for debugging
+  window.app = app;
+  
+  console.log('School Navigation App initialized successfully');
+});
