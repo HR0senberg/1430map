@@ -28,6 +28,10 @@ class SchoolNavigationApp {
     this.floorBackgrounds = new Map();
     this.backgroundOpacity = 0.3;
     
+    // Enhanced notification system
+    this.notificationQueue = new Map(); // message -> {count, element, timer}
+    this.snoozeTimers = new Map();
+    
     // Enhanced voice settings
     this.voiceSettings = { rate: 0.9, pitch: 1.0, volume: 1.0 };
     this.showSubtitles = true;
@@ -47,13 +51,19 @@ class SchoolNavigationApp {
 
   init() {
     this.setupCanvas();
-    this.setupEventListeners();
-    this.setupVoiceSynthesis();
-    this.loadDefaultData();
-    this.updateFloorSelectors();
-    this.render();
-    this.checkTheme();
-    this.showNotification('Добро пожаловать в систему навигации Школы №1430!', 'info');
+    this.showLoading('Инициализация приложения...');
+    
+    setTimeout(() => {
+      this.setupEventListeners();
+      this.setupVoiceSynthesis();
+      this.loadDefaultData();
+      this.updateFloorSelectors();
+      this.render();
+      this.checkTheme();
+      this.setupKeyboardShortcuts();
+      this.hideLoading();
+      this.showNotification('Добро пожаловать в систему навигации Школы №1430!', 'info');
+    }, 1000);
   }
 
   setupCanvas() {
@@ -160,11 +170,20 @@ class SchoolNavigationApp {
 
     // Map management
     document.getElementById('saveMap').addEventListener('click', () => {
-      this.authenticateAction(() => this.saveMap());
+      this.saveMap();
     });
 
     document.getElementById('loadMap').addEventListener('click', () => {
-      this.authenticateAction(() => document.getElementById('loadMapFile').click());
+      document.getElementById('loadMapFile').click();
+    });
+    
+    // Quick save/load buttons
+    document.getElementById('quickSave').addEventListener('click', () => {
+      this.saveMap();
+    });
+    
+    document.getElementById('quickLoad').addEventListener('click', () => {
+      document.getElementById('loadMapFile').click();
     });
 
     document.getElementById('loadMapFile').addEventListener('change', (e) => {
@@ -179,8 +198,18 @@ class SchoolNavigationApp {
     document.getElementById('floorPlanUpload').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
-        this.loadFloorPlan(file);
+        this.showLoading('Загрузка изображения...');
+        setTimeout(() => {
+          this.loadFloorPlan(file);
+          this.hideLoading();
+        }, 500);
       }
+    });
+    
+    // Opacity slider
+    document.getElementById('bgOpacity').addEventListener('input', (e) => {
+      this.backgroundOpacity = parseInt(e.target.value) / 100;
+      document.getElementById('bgOpacityValue').textContent = e.target.value;
     });
     
     document.getElementById('removeFloorPlan').addEventListener('click', () => {
@@ -200,6 +229,26 @@ class SchoolNavigationApp {
 
     // Modal events
     this.setupModalEvents();
+  }
+  
+  setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        this.saveMap();
+      } else if (e.ctrlKey && e.key === 'o') {
+        e.preventDefault();
+        document.getElementById('loadMapFile').click();
+      } else if (e.key === 'F1') {
+        e.preventDefault();
+        this.showNotification('Клавиши: Ctrl+S - сохранить, Ctrl+O - загрузить, Esc - закрыть модальные окна', 'info');
+      } else if (e.key === 'Escape') {
+        // Close any open modals
+        document.querySelectorAll('.modal.active').forEach(modal => {
+          this.closeModal(modal);
+        });
+      }
+    });
   }
 
   setupModalEvents() {
@@ -1254,12 +1303,15 @@ class SchoolNavigationApp {
     }, 3000); // Simulate detection after 3 seconds
   }
 
-  handleQRDetection(qrCode) {
-    const node = Array.from(this.nodes.values()).find(n => n.qrCode === qrCode);
-    
+  handleQRResult(qrCode) {
+    const node = this.findNodeByQR(qrCode);
     if (node) {
-      this.currentLocation = node;
-      this.switchFloor(node.floor);
+      if (node.floor !== this.currentFloor) {
+        this.switchFloor(node.floor);
+      }
+      this.currentLocation = node.id;
+      this.highlightCurrentLocation();
+      this.showNotification(`Вы находитесь на этаже ${node.floor}, в ${node.name}`, 'success');
       
       // Set as start point in route planning
       document.getElementById('startPoint').value = node.id;
@@ -1267,13 +1319,24 @@ class SchoolNavigationApp {
       const resultDiv = document.getElementById('qrResult');
       resultDiv.textContent = `Обнаружен QR-код: ${node.name} (Этаж ${node.floor})`;
       resultDiv.classList.add('show');
-      
-      this.showNotification(`Местоположение: ${node.name}`, 'success');
     } else {
       const resultDiv = document.getElementById('qrResult');
       resultDiv.textContent = `Неизвестный QR-код: ${qrCode}`;
       resultDiv.classList.add('show');
     }
+  }
+  
+  handleQRDetection(qrCode) {
+    // Delegate to handleQRResult for consistency
+    this.handleQRResult(qrCode);
+  }
+  
+  findNodeByQR(qrCode) {
+    return Array.from(this.nodes.values()).find(n => n.qrCode === qrCode);
+  }
+  
+  highlightCurrentLocation() {
+    // This will be handled in the render method with visual highlighting
   }
 
   stopQRScanner() {
@@ -1296,44 +1359,54 @@ class SchoolNavigationApp {
   }
 
   saveMap() {
-    // Convert background images to base64 for saving
-    const backgroundsData = [];
-    for (const [floor, img] of this.floorBackgrounds) {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      backgroundsData.push({
-        floor: floor,
-        data: canvas.toDataURL()
-      });
-    }
+    this.showLoading('Сохранение карты...');
     
-    const mapData = {
-      nodes: Array.from(this.nodes.entries()),
-      connections: this.connections,
-      floors: this.floors,
-      floorBackgrounds: backgroundsData,
-      version: '1.0',
-      timestamp: new Date().toISOString()
-    };
-    
-    const dataStr = JSON.stringify(mapData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `school1430_map_${new Date().toISOString().split('T')[0]}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-    
-    this.showNotification('Карта сохранена', 'success');
+    setTimeout(() => {
+      try {
+        // Convert background images to base64 for saving
+        const backgroundsData = {};
+        for (const [floor, img] of this.floorBackgrounds) {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          backgroundsData[floor] = canvas.toDataURL();
+        }
+        
+        const mapData = {
+          nodes: Array.from(this.nodes.entries()),
+          connections: this.connections,
+          floors: this.floors,
+          backgrounds: backgroundsData,
+          backgroundOpacity: this.backgroundOpacity,
+          version: '2.0',
+          timestamp: new Date().toISOString()
+        };
+        
+        const dataStr = JSON.stringify(mapData, null, 2);
+        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        
+        const exportFileDefaultName = `school1430_map_${new Date().toISOString().split('T')[0]}.json`;
+        
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+        
+        this.hideLoading();
+        this.showNotification('Карта сохранена', 'success');
+      } catch (error) {
+        this.hideLoading();
+        this.showNotification('Ошибка при сохранении карты', 'error');
+      }
+    }, 500);
   }
 
   loadMap(file) {
     if (!file) return;
+    
+    this.showLoading('Загрузка карты...');
     
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -1363,23 +1436,54 @@ class SchoolNavigationApp {
           this.updateFloorSelectors();
         }
         
-        // Load floor backgrounds
-        if (mapData.floorBackgrounds && Array.isArray(mapData.floorBackgrounds)) {
-          mapData.floorBackgrounds.forEach(bgData => {
+        // Load background opacity
+        if (mapData.backgroundOpacity !== undefined) {
+          this.backgroundOpacity = mapData.backgroundOpacity;
+          document.getElementById('bgOpacity').value = Math.round(this.backgroundOpacity * 100);
+          document.getElementById('bgOpacityValue').textContent = Math.round(this.backgroundOpacity * 100);
+        }
+        
+        // Load backgrounds (new format)
+        const backgrounds = mapData.backgrounds || mapData.floorBackgrounds;
+        if (backgrounds) {
+          let loadCount = 0;
+          const totalBackgrounds = Object.keys(backgrounds).length;
+          
+          if (totalBackgrounds === 0) {
+            this.hideLoading();
+            this.showNotification('Карта загружена', 'success');
+          }
+          
+          Object.entries(backgrounds).forEach(([floor, data]) => {
             const img = new Image();
             img.onload = () => {
-              this.floorBackgrounds.set(bgData.floor, img);
-              this.updateFloorPlanInfo();
+              this.floorBackgrounds.set(parseInt(floor), img);
+              loadCount++;
+              if (loadCount === totalBackgrounds) {
+                this.updateFloorPlanInfo();
+                this.hideLoading();
+                this.showNotification('Карта загружена с фоновыми изображениями', 'success');
+              }
             };
-            img.src = bgData.data;
+            img.onerror = () => {
+              loadCount++;
+              if (loadCount === totalBackgrounds) {
+                this.hideLoading();
+                this.showNotification('Карта загружена (некоторые изображения не удалось загрузить)', 'warning');
+              }
+            };
+            img.src = typeof data === 'string' ? data : data.data;
           });
+        } else {
+          this.hideLoading();
+          this.showNotification('Карта загружена', 'success');
         }
         
         this.updateRouteSelectors();
         this.updateFloorPlanInfo();
-        this.showNotification('Карта загружена', 'success');
         
       } catch (error) {
+        this.hideLoading();
         this.showNotification('Ошибка при загрузке карты', 'error');
       }
     };
@@ -1474,21 +1578,117 @@ class SchoolNavigationApp {
     document.body.style.overflow = '';
   }
 
+  showLoading(text = 'Загрузка...') {
+    const overlay = document.getElementById('loadingOverlay');
+    overlay.querySelector('.loading-text').textContent = text;
+    overlay.style.display = 'flex';
+  }
+  
+  hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+  }
+  
   showNotification(message, type = 'info') {
     const container = document.getElementById('notifications');
     
+    // Check if notification already exists
+    if (this.notificationQueue.has(message)) {
+      const existing = this.notificationQueue.get(message);
+      existing.count++;
+      this.updateNotificationCounter(existing.element, existing.count);
+      
+      // Reset timer
+      clearTimeout(existing.timer);
+      existing.timer = setTimeout(() => {
+        this.removeNotification(message);
+      }, this.getNotificationTimeout(type));
+      
+      return;
+    }
+    
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
-    notification.textContent = message;
     
+    const content = document.createElement('div');
+    content.className = 'notification-content';
+    content.textContent = message;
+    notification.appendChild(content);
+    
+    const actions = document.createElement('div');
+    actions.className = 'notification-actions';
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'notification-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.onclick = () => this.removeNotification(message);
+    actions.appendChild(closeBtn);
+    
+    // Add snooze button for warnings and errors
+    if (type === 'warning' || type === 'error') {
+      const snoozeBtn = document.createElement('button');
+      snoozeBtn.className = 'notification-btn';
+      snoozeBtn.textContent = 'Отложить';
+      snoozeBtn.onclick = () => this.snoozeNotification(message);
+      actions.appendChild(snoozeBtn);
+    }
+    
+    notification.appendChild(actions);
     container.appendChild(notification);
     
-    // Auto remove after 3 seconds
-    setTimeout(() => {
-      if (notification.parentNode) {
-        notification.parentNode.removeChild(notification);
+    const timer = setTimeout(() => {
+      this.removeNotification(message);
+    }, this.getNotificationTimeout(type));
+    
+    this.notificationQueue.set(message, {
+      count: 1,
+      element: notification,
+      timer: timer,
+      type: type
+    });
+  }
+  
+  updateNotificationCounter(element, count) {
+    let counter = element.querySelector('.notification-counter');
+    if (!counter) {
+      counter = document.createElement('div');
+      counter.className = 'notification-counter';
+      element.appendChild(counter);
+    }
+    counter.textContent = `(x${count})`;
+    counter.style.display = count > 1 ? 'block' : 'none';
+  }
+  
+  removeNotification(message) {
+    if (this.notificationQueue.has(message)) {
+      const notif = this.notificationQueue.get(message);
+      if (notif.element.parentNode) {
+        notif.element.parentNode.removeChild(notif.element);
       }
-    }, 3000);
+      clearTimeout(notif.timer);
+      this.notificationQueue.delete(message);
+    }
+  }
+  
+  snoozeNotification(message) {
+    this.removeNotification(message);
+    
+    // Show reminder after 5 minutes
+    setTimeout(() => {
+      if (this.notificationQueue.has(message)) return; // Don't snooze if already showing
+      
+      const reminderMessage = `Напоминание: ${message}`;
+      this.showNotification(reminderMessage, 'info');
+    }, 300000); // 5 minutes
+  }
+  
+  getNotificationTimeout(type) {
+    switch (type) {
+      case 'success': return 3000;
+      case 'info': return 3000;
+      case 'warning': return 5000;
+      case 'error': return 7000;
+      default: return 3000;
+    }
   }
   
   // Floor background management methods
@@ -1680,6 +1880,29 @@ class SchoolNavigationApp {
       }
     }
     
+    // Highlight current location from QR scan
+    if (this.currentLocation && typeof this.currentLocation === 'string') {
+      const locationNode = this.nodes.get(this.currentLocation);
+      if (locationNode && locationNode.floor === this.currentFloor) {
+        // Draw bright golden ring around current location
+        const time = Date.now() / 1000;
+        const pulseRadius = 25 + 10 * Math.sin(time * 3);
+        
+        this.ctx.strokeStyle = '#FFD700'; // Gold color
+        this.ctx.lineWidth = 4;
+        this.ctx.setLineDash([]);
+        this.ctx.beginPath();
+        this.ctx.arc(locationNode.x, locationNode.y, pulseRadius, 0, 2 * Math.PI);
+        this.ctx.stroke();
+        
+        // Inner solid circle
+        this.ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+        this.ctx.beginPath();
+        this.ctx.arc(locationNode.x, locationNode.y, 15, 0, 2 * Math.PI);
+        this.ctx.fill();
+      }
+    }
+    
     this.ctx.restore();
   }
 
@@ -1738,5 +1961,5 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export app to global scope for debugging and external event handlers
   window.app = app;
   
-  console.log('School Navigation App initialized successfully');
+  console.log('School Navigation App v2.0 initialized successfully');
 });
